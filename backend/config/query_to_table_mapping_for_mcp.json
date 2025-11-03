@@ -1,0 +1,329 @@
+{
+  "query_mappings": [
+    {
+      "query_type": "trend_discovery_exploration",
+      "priority": 1,
+      "description": "Discovery of new trend entities, filtering by category/brick, ordered by trend score or recency",
+      "user_personas": ["Fashion Designers", "Buyers"],
+      "business_question": "What's new, what's emerging, what should I be paying attention to?",
+      "keywords": [
+        "trending",
+        "top trends",
+        "emerging",
+        "new",
+        "popular",
+        "what's hot",
+        "high-scoring",
+        "spring trends",
+        "fall trends",
+        "summer trends",
+        "winter trends",
+        "streetwear",
+        "sustainable",
+        "instagram",
+        "tiktok",
+        "social media",
+        "discovery",
+        "exploration",
+        "show me trends",
+        "latest",
+        "current"
+      ],
+      "tables": [
+        {
+          "dataset": "nextwave",
+          "table": "stl_trend",
+          "priority": 1,
+          "reason": "Direct trend entities with depth, depthRank, rateOfGrowth, firstSeen, lastSeen for recency"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "trend_scores",
+          "priority": 1,
+          "reason": "Explicit trend_score, trend_rank for ordering, with category/brick filtering"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "trend_raw_data",
+          "priority": 2,
+          "reason": "Raw data with category, brick, pattern, print for precise filtering and options_count prevalence"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "edited_options_bestsellers_data",
+          "priority": 3,
+          "reason": "Bestsellers reflect current trends with LLM-mapped attributes and trend_id linkage"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "bestseller_data_attributes",
+          "priority": 3,
+          "reason": "Captures trending attributes through bestselling product analysis"
+        }
+      ]
+    },
+    {
+      "query_type": "performance_sales_intelligence",
+      "priority": 1,
+      "description": "Access to internal sales signals—sell-through, velocity, RTV, inventory exposure, regional demand",
+      "user_personas": ["Inventory Planners", "Buyers"],
+      "business_question": "What's actually selling? What's moving fast or slow?",
+      "keywords": [
+        "sell-through",
+        "selling",
+        "sales",
+        "velocity",
+        "inventory",
+        "slow-moving",
+        "fast-moving",
+        "performance",
+        "return rate",
+        "rtv",
+        "moving",
+        "bestseller",
+        "top seller",
+        "high performing",
+        "low performing",
+        "sell out",
+        "sellout",
+        "in stock",
+        "out of stock",
+        "restock",
+        "discount",
+        "price",
+        "revenue",
+        "exposure",
+        "regional demand"
+      ],
+      "tables": [
+        {
+          "dataset": "nextwave",
+          "table": "edited_options_bestsellers_data",
+          "priority": 1,
+          "reason": "Comprehensive metrics: sellout_percentage, days_to_first_sellthrough, discount data, bestseller_count"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "options_listing_partitioned",
+          "priority": 1,
+          "reason": "Rich sales/inventory metrics: sellout_percentage, days_in_stock, restock_count, SKU tracking"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "bestseller_data_attributes",
+          "priority": 2,
+          "reason": "Bestseller status tracking with Bestseller_time and Bestseller_month indicators"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "options_data",
+          "priority": 3,
+          "reason": "Product availability and pricing with days_in_stock and discount_percentage"
+        }
+      ]
+    },
+    {
+      "query_type": "lifecycle_momentum_analysis",
+      "priority": 1,
+      "description": "Access to lifecycle classifications, stage transitions, momentum metrics, second-order velocity indicators",
+      "user_personas": ["Buyers", "Category Managers"],
+      "business_question": "Where is this trend in its lifecycle? Should I buy now or wait?",
+      "keywords": [
+        "lifecycle",
+        "stage",
+        "acceleration",
+        "peaking",
+        "declining",
+        "growing",
+        "slowing",
+        "momentum",
+        "early-stage",
+        "mature",
+        "emerging",
+        "rate of growth",
+        "velocity",
+        "trajectory",
+        "maturity",
+        "rise",
+        "fall",
+        "uptick",
+        "downturn",
+        "timing",
+        "phase",
+        "evolution",
+        "transition",
+        "stabilize",
+        "plateau"
+      ],
+      "tables": [
+        {
+          "dataset": "nextwave",
+          "table": "stl_trend",
+          "priority": 1,
+          "reason": "Explicit lifecycle field, rateOfGrowth, rateOfGrowthRank for momentum metrics"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "trend_scores",
+          "priority": 1,
+          "reason": "Momentum metrics: trend_score, growth_score, growth_zscore, current_month vs predicted_month"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "trend_raw_data",
+          "priority": 2,
+          "reason": "Historical options_count over months to derive growth/decline trends"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "edited_options_bestsellers_data",
+          "priority": 3,
+          "reason": "Product-level momentum indicators: days_in_stock, sellout_percentage, days_to_first_sellthrough"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "options_listing_partitioned",
+          "priority": 3,
+          "reason": "Secondary velocity indicators at product level for trend inference"
+        }
+      ]
+    },
+    {
+      "query_type": "brand_cohort_relevance",
+      "priority": 1,
+      "description": "Access to brand cohorting data, cohort-adjusted scores, brand adoption patterns",
+      "user_personas": ["Buyers", "Brand Managers"],
+      "business_question": "Is this trend right for my brand? Who else is doing this?",
+      "keywords": [
+        "brand",
+        "cohort",
+        "fashion-forward",
+        "fashion laggard",
+        "neutral",
+        "brand positioning",
+        "who else",
+        "adoption",
+        "relevant for",
+        "brand alignment",
+        "competitor",
+        "similar brands",
+        "luxury",
+        "mass market",
+        "premium",
+        "affordable",
+        "fast fashion",
+        "high-end",
+        "mid-tier",
+        "budget",
+        "positioning"
+      ],
+      "tables": [
+        {
+          "dataset": "nextwave",
+          "table": "trend_scores",
+          "priority": 1,
+          "reason": "Directly links trend_name with cohort for cohort-adjusted scores"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "edited_options_bestsellers_data",
+          "priority": 1,
+          "reason": "Links products to brand and cohort fields, showing brand adoption patterns"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "brands_staging",
+          "priority": 2,
+          "reason": "Defines brand_name to cohort mapping for cohort interpretation"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "stl_trend",
+          "priority": 3,
+          "reason": "Distribution tier, source, generation info for cohort characteristics"
+        }
+      ]
+    },
+    {
+      "query_type": "attribute_product_deep_dive",
+      "priority": 1,
+      "description": "Granular attribute exploration—sleeve, neck, length, print, color, fit, fabric from PLM-FTF taxonomy",
+      "user_personas": ["Fashion Designers", "Buyers", "Product Developers"],
+      "business_question": "What exact attributes, colors, silhouettes are defining this trend?",
+      "keywords": [
+        "attribute",
+        "v-neck",
+        "midi",
+        "sleeve",
+        "neck",
+        "length",
+        "print",
+        "color",
+        "palette",
+        "silhouette",
+        "fit",
+        "fabric",
+        "material",
+        "pattern",
+        "style",
+        "cut",
+        "design details",
+        "neckline",
+        "hem",
+        "waist",
+        "collar",
+        "texture",
+        "finish",
+        "product details",
+        "specifications",
+        "features",
+        "construction"
+      ],
+      "tables": [
+        {
+          "dataset": "nextwave",
+          "table": "edited_options_bestsellers_data",
+          "priority": 1,
+          "reason": "Rich LLM-mapped attributes: apparel_brick_value_llm, print_value_llm, color_value_llm, neck_type_value_llm, sleeve_style_value_llm, fit_value_llm, length_value_llm"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "bestseller_data_attributes",
+          "priority": 1,
+          "reason": "Detailed product attributes linked to bestseller status for top-performing item analysis"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "taxonomy_data",
+          "priority": 2,
+          "reason": "PLM-FTF taxonomy definitions: print, pattern, sleeve_style, fit, style, neck, length, apparel_brick"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "taxonomy_table_data",
+          "priority": 2,
+          "reason": "Explicit attribute value mappings: sleeve_style_value, neck_type_value, length_value, style_value, print_value"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "trend_raw_data",
+          "priority": 3,
+          "reason": "Core attributes associated with trends: category, brick, pattern, print, style, sleeve_style, length, neck"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "stl_trend",
+          "priority": 3,
+          "reason": "Trend identification by name, category, gender for filtering attribute-rich tables"
+        }
+      ]
+    }
+  ],
+  "fallback_behavior": {
+    "description": "If query classification confidence is below threshold or no clear match",
+    "action": "allow_model_exploration",
+    "default_tables": ["stl_trend", "trend_scores"]
+  },
+  "confidence_threshold": 0.6,
+  "max_tables_per_query": 4
+}
