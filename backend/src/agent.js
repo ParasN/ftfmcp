@@ -1,3 +1,4 @@
+
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { listDatasets, listTables, getTableSchema, runQuery, forecast } from './bigquery.js';
 import { getQueryRoutingSuggestion } from './queryRouter.js';
@@ -148,9 +149,20 @@ export class AgenticOrchestrator {
     this.genAI = new GoogleGenerativeAI(apiKey);
     this.conversationHistory = [];
     this.routingHistory = [];
+    this.responseFormats = {};
+  }
+
+  async initializeResponseFormats() {
+    const fs = await import('fs');
+    const jsonData = fs.readFileSync('./src/response_formats.json', 'utf-8');
+    this.responseFormats = JSON.parse(jsonData);
   }
 
   async chat(userMessage) {
+    if (Object.keys(this.responseFormats).length === 0) {
+      await this.initializeResponseFormats();
+    }
+
     const routingSuggestion = getQueryRoutingSuggestion(userMessage);
     const routingHint = formatRoutingHint(routingSuggestion);
 
@@ -177,19 +189,8 @@ export class AgenticOrchestrator {
           parameters: tool.parameters
         }))
       }],
-      systemInstruction: `You are a helpful assistant that helps users explore and query their Google BigQuery data.
-
-When a user asks a question:
-1. First, understand what data they're asking about
-2. Use list_datasets to see available datasets if needed
-3. Use list_tables to see tables in relevant datasets
-4. Use get_table_schema to understand table structure before querying
-5. Use run_query to execute SQL queries and get answers
-6. Present results in a clear, conversational way
-
-Always explain what you're doing and why. If you need to run multiple queries or explore the schema, explain your reasoning.`
+      systemInstruction: `You are a helpful assistant that helps users explore and query their Google BigQuery data.\n\nWhen a user asks a question:\n1. First, understand what data they're asking about\n2. Use list_datasets to see available datasets if needed\n3. Use list_tables to see tables in relevant datasets\n4. Use get_table_schema to understand table structure before querying\n5. Use run_query to execute SQL queries and get answers\n6. Present results in a clear, conversational way\n\nAlways explain what you're doing and why. If you need to run multiple queries or explore the schema, explain your reasoning.\n\nWhen providing a final answer, you MUST use the structured response format provided below. Select the most appropriate schema based on the user's query and fill in the placeholders with the data you have gathered.\n\n${JSON.stringify(this.responseFormats, null, 2)}`
     });
-
 
     const chat = model.startChat({
       history: this.conversationHistory.slice(0, -1)
@@ -247,7 +248,6 @@ Always explain what you're doing and why. If you need to run multiple queries or
         role: 'function',
         parts: functionResponses
       });
-
 
       response = await chat.sendMessage(functionResponses);
     }

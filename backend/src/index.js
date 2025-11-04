@@ -1,3 +1,4 @@
+import * as functions from "firebase-functions";
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -12,8 +13,7 @@ const __dirname = dirname(__filename);
 dotenv.config({ path: join(__dirname, '../../.env') });
 
 const app = express();
-const PORT = process.env.PORT || 3001;
-
+let server;
 
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:5173'
@@ -51,7 +51,8 @@ async function initializeServices() {
   }
 }
 
-app.get('/api/health', (req, res) => {
+
+app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     initialized: orchestrator !== null,
@@ -60,7 +61,7 @@ app.get('/api/health', (req, res) => {
 });
 
 
-app.post('/api/chat', async (req, res) => {
+app.post('/chat', async (req, res) => {
   try {
     if (!orchestrator) {
       return res.status(503).json({
@@ -92,7 +93,7 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
-app.post('/api/reset', (req, res) => {
+app.post('/reset', (req, res) => {
   try {
     if (!orchestrator) {
       return res.status(503).json({
@@ -114,7 +115,7 @@ app.post('/api/reset', (req, res) => {
   }
 });
 
-app.get('/api/history', (req, res) => {
+app.get('/history', (req, res) => {
   try {
     if (!orchestrator) {
       return res.status(503).json({
@@ -137,23 +138,31 @@ app.get('/api/history', (req, res) => {
 });
 
 async function startServer() {
-  try {
-    await initializeServices();
+  await initializeServices();
 
-    app.listen(PORT, () => {
-      console.log(`\n🚀 BigQuery Chat Server running on http://localhost:${PORT}`);
-      console.log(`📊 Project ID: ${process.env.GCP_PROJECT_ID}`);
-      console.log(`🤖 Agentic orchestration: Enabled`);
-      console.log(`\nAPI Endpoints:`);
-      console.log(`  GET  /api/health   - Health check`);
-      console.log(`  POST /api/chat     - Send a message`);
-      console.log(`  POST /api/reset    - Reset conversation`);
-      console.log(`  GET  /api/history  - Get conversation history\n`);
+  // Start the server for local development
+  if (process.env.NODE_ENV !== 'production') {
+    const portArg = process.argv.find(arg => arg.startsWith('--port='));
+    const PORT = portArg ? portArg.split('=')[1] : (process.env.PORT || 8081);
+    server = app.listen(PORT, () => {
+      console.log(`🚀 Backend server running at http://localhost:${PORT}`);
     });
-  } catch (error) {
-    console.error('Failed to start server:', error);
-    process.exit(1);
   }
 }
 
-startServer();
+if (process.env.NODE_ENV === 'production') {
+  exports.api = functions.https.onRequest(app);
+} else {
+  startServer();
+}
+
+const gracefulShutdown = () => {
+  console.log('👋 Shutting down gracefully');
+  server.close(() => {
+    console.log(' Fuller Stack out ✌️');
+    process.exit(0);
+  });
+};
+
+process.on('SIGINT', gracefulShutdown);
+process.on('SIGTERM', gracefulShutdown);

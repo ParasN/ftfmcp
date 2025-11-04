@@ -9,14 +9,14 @@
   ],
   "scripts": {
     "install:all": "npm install && npm install --workspace=backend && npm install --workspace=frontend",
-    "dev": "concurrently \"npm run dev --workspace=backend\" \"npm run dev --workspace=frontend\"",
     "dev:backend": "npm run dev --workspace=backend",
-    "dev:frontend": "npm run dev --workspace=frontend",
+    "dev:frontend": "npm run dev --workspace=frontend --",
     "build": "npm run build --workspace=frontend",
     "start": "npm run start --workspace=backend"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "kill-port": "^2.0.1"
   },
   "engines": {
     "node": ">=18.0.0"
