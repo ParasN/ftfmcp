@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { listDatasets, listTables, getTableSchema, runQuery, forecast } from './bigquery.js';
 import { getQueryRoutingSuggestion } from './queryRouter.js';
+import { buildResponseFormatHint, validateResponseAgainstTemplate } from './responseSchema.js';
 
 const tools = [
   {
@@ -153,10 +154,19 @@ export class AgenticOrchestrator {
   async chat(userMessage) {
     const routingSuggestion = getQueryRoutingSuggestion(userMessage);
     const routingHint = formatRoutingHint(routingSuggestion);
+    const schemaHint = routingSuggestion.responseSchema ? buildResponseFormatHint(routingSuggestion.responseSchema) : '';
 
-    const combinedMessage = routingHint
-      ? `${userMessage}\n\n[ROUTING_HINT]\n${routingHint}\n[/ROUTING_HINT]\n\nUse the suggested tables when applicable.`
-      : userMessage;
+    const hintBlocks = [];
+
+    if (routingHint) {
+      hintBlocks.push(`[ROUTING_HINT]\n${routingHint}\n[/ROUTING_HINT]\nUse the suggested tables when applicable.`);
+    }
+
+    if (schemaHint) {
+      hintBlocks.push(`[RESPONSE_FORMAT]\n${schemaHint}\n[/RESPONSE_FORMAT]\nReturn the JSON payload exactly once using this structure.`);
+    }
+
+    const combinedMessage = [userMessage, ...hintBlocks].join('\n\n');
 
     this.conversationHistory.push({
       role: 'user',
@@ -187,7 +197,16 @@ When a user asks a question:
 5. Use run_query to execute SQL queries and get answers
 6. Present results in a clear, conversational way
 
-Always explain what you're doing and why. If you need to run multiple queries or explore the schema, explain your reasoning.`
+Always explain what you're doing and why. If you need to run multiple queries or explore the schema, explain your reasoning.
+
+RESPONSE FORMAT RULES:
+1. Always respond in Markdown using the exact template provided in the [RESPONSE_FORMAT] hint.
+2. Restate the user's query in the dedicated section before providing findings.
+3. Preserve all headings, table columns, emojis, and bullet formatting shown in the template.
+4. Populate tables with the most relevant data available; if data is missing, keep the row and state "No data".
+5. After the main sections, include the concluding footnote specified in the template.
+6. Do not output JSON, code fences, or alternative layouts unless explicitly asked.
+7. If no [RESPONSE_FORMAT] hint is supplied, use the default \"📌 Data Insights Summary\" template from the shared guidelines.`
     });
 
 
@@ -195,74 +214,119 @@ Always explain what you're doing and why. If you need to run multiple queries or
       history: this.conversationHistory.slice(0, -1)
     });
 
-    let response = await chat.sendMessage(combinedMessage);
-    let toolCalls = [];
+    const MAX_FORMAT_RETRIES = 1;
+    let attempt = 0;
+    let pendingMessage = combinedMessage;
     let finalText = '';
+    let aggregatedToolCalls = [];
+    let validationResult = { valid: true, missingSections: [] };
 
-    while (response.response.candidates[0].content.parts.some(part => part.functionCall)) {
-      const functionCalls = response.response.candidates[0].content.parts
-        .filter(part => part.functionCall)
-        .map(part => part.functionCall);
+    while (attempt <= MAX_FORMAT_RETRIES) {
+      let response = await chat.sendMessage(pendingMessage);
+      const iterationToolCalls = [];
 
-      const functionResponses = [];
+      while (response.response.candidates[0].content.parts.some(part => part.functionCall)) {
+        const functionCalls = response.response.candidates[0].content.parts
+          .filter(part => part.functionCall)
+          .map(part => part.functionCall);
 
-      for (const functionCall of functionCalls) {
-        const toolCall = {
-          name: functionCall.name,
-          args: functionCall.args,
-          result: null,
-          error: null
-        };
+        const functionResponses = [];
 
-        try {
-          const result = await executeToolCall(functionCall.name, functionCall.args);
-          toolCall.result = result;
-          
-          functionResponses.push({
-            functionResponse: {
-              name: functionCall.name,
-              response: { result }
-            }
-          });
-        } catch (error) {
-          toolCall.error = error.message;
-          
-          functionResponses.push({
-            functionResponse: {
-              name: functionCall.name,
-              response: { error: error.message }
-            }
-          });
+        for (const functionCall of functionCalls) {
+          const toolCall = {
+            name: functionCall.name,
+            args: functionCall.args,
+            result: null,
+            error: null
+          };
+
+          try {
+            const result = await executeToolCall(functionCall.name, functionCall.args);
+            toolCall.result = result;
+            
+            functionResponses.push({
+              functionResponse: {
+                name: functionCall.name,
+                response: { result }
+              }
+            });
+          } catch (error) {
+            toolCall.error = error.message;
+            
+            functionResponses.push({
+              functionResponse: {
+                name: functionCall.name,
+                response: { error: error.message }
+              }
+            });
+          }
+
+          iterationToolCalls.push(toolCall);
         }
 
-        toolCalls.push(toolCall);
+        this.conversationHistory.push({
+          role: 'model',
+          parts: response.response.candidates[0].content.parts
+        });
+
+        this.conversationHistory.push({
+          role: 'function',
+          parts: functionResponses
+        });
+
+
+        response = await chat.sendMessage(functionResponses);
       }
+
+      finalText = response.response.text();
 
       this.conversationHistory.push({
         role: 'model',
-        parts: response.response.candidates[0].content.parts
+        parts: [{ text: finalText }]
       });
+
+      aggregatedToolCalls = aggregatedToolCalls.concat(iterationToolCalls);
+
+      const schemaConfig = routingSuggestion.responseSchema;
+
+      if (!schemaConfig) {
+        validationResult = { valid: true, missingSections: [] };
+        break;
+      }
+
+      validationResult = validateResponseAgainstTemplate(finalText, schemaConfig);
+
+      if (validationResult.valid) {
+        break;
+      }
+
+      if (attempt === MAX_FORMAT_RETRIES) {
+        const missingList = validationResult.missingSections.join('; ');
+        finalText = `${finalText}\n\nWARNING: Response did not match required template sections. Missing: ${missingList}`;
+        break;
+      }
+
+      attempt += 1;
+
+      const correctionPrompt = [
+        `Your previous response did not follow the required Markdown template for "${schemaConfig.query_type}".`,
+        `Missing sections: ${validationResult.missingSections.join(', ')}`,
+        'Please resend the answer using the exact headings, tables, and bullet styles from the [RESPONSE_FORMAT] hint. Keep the template structure intact.'
+      ].join('\n');
 
       this.conversationHistory.push({
-        role: 'function',
-        parts: functionResponses
+        role: 'user',
+        parts: [{ text: correctionPrompt }]
       });
 
-
-      response = await chat.sendMessage(functionResponses);
+      pendingMessage = correctionPrompt;
     }
-
-    finalText = response.response.text();
-
-    this.conversationHistory.push({
-      role: 'model',
-      parts: [{ text: finalText }]
-    });
 
     return {
       text: finalText,
-      toolCalls: toolCalls,
-      routingSuggestion
+      toolCalls: aggregatedToolCalls,
+      routingSuggestion,
+      formatValidation: validationResult
     };
   }
 

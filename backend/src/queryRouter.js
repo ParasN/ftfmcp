@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { getResponseSchema } from './responseSchema.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -104,7 +105,8 @@ export function getQueryRoutingSuggestion(userQuery) {
       })),
       matchedKeywords: bestMatch ? bestMatch.matchedKeywords : [],
       fallbackApplied: true,
-      fallbackBehavior
+      fallbackBehavior,
+      responseSchema: getResponseSchema(null)
     };
   }
 
@@ -119,6 +121,7 @@ export function getQueryRoutingSuggestion(userQuery) {
     tables: sortedTables,
     matchedKeywords: bestMatch.matchedKeywords,
     fallbackApplied: false,
-    fallbackBehavior
+    fallbackBehavior,
+    responseSchema: getResponseSchema(bestMatch.mapping.query_type)
   };
 }
