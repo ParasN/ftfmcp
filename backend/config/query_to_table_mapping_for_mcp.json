@@ -319,6 +319,58 @@
           "reason": "Trend identification by name, category, gender for filtering attribute-rich tables"
         }
       ]
+    },
+    {
+      "query_type": "trend_hashtag_collections",
+      "priority": 1,
+      "description": "Create Ajio-ready hashtag collections linked to trend data, product assortments, and refresh cadences.",
+      "user_personas": ["Marketing", "Merchandising", "Social Commerce"],
+      "business_question": "Which trend hashtags should Ajio activate and how do they connect to products?",
+      "keywords": [
+        "hashtag",
+        "hashtags",
+        "trend hashtag",
+        "tag collection",
+        "tagged collection",
+        "hashtag collection",
+        "hashtag plan",
+        "social tag",
+        "ajio hashtag",
+        "#streetwear",
+        "#urbanfashion",
+        "#hypebeast",
+        "trend page",
+        "trend landing",
+        "campaign hashtag",
+        "influencer hashtag",
+        "shop the hashtag"
+      ],
+      "tables": [
+        {
+          "dataset": "nextwave",
+          "table": "trend_scores",
+          "priority": 1,
+          "reason": "Scores and growth metrics to justify hashtag prioritization"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "stl_trend",
+          "priority": 1,
+          "reason": "Lifecycle, momentum, and first/last seen timestamps for refresh cadence"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "edited_options_bestsellers_data",
+          "priority": 2,
+          "reason": "Links trends to top-selling products and categories for collection mapping"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "bestseller_data_attributes",
+          "priority": 2,
+          "reason": "Attribute-level signals to build merchandising hooks for each hashtag"
+        }
+      ]
     }
   ],
   "fallback_behavior": {
