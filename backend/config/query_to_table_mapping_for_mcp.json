@@ -34,7 +34,7 @@
         {
           "dataset": "nextwave",
           "table": "stl_trend",
-          "priority": 1,
+          "priority": 3,
           "reason": "Direct trend entities with depth, depthRank, rateOfGrowth, firstSeen, lastSeen for recency"
         },
         {
@@ -52,13 +52,13 @@
         {
           "dataset": "nextwave",
           "table": "edited_options_bestsellers_data",
-          "priority": 3,
+          "priority": 1,
           "reason": "Bestsellers reflect current trends with LLM-mapped attributes and trend_id linkage"
         },
         {
           "dataset": "nextwave",
           "table": "bestseller_data_attributes",
-          "priority": 3,
+          "priority": 1,
           "reason": "Captures trending attributes through bestselling product analysis"
         }
       ]
@@ -260,6 +260,7 @@
         "length",
         "print",
         "color",
+        "colour",
         "palette",
         "silhouette",
         "fit",
