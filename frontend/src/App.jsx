@@ -95,7 +95,7 @@ function App() {
   return (
     <div className="app">
       <header className="header">
-        <h1>BigQuery Chat</h1>
+        <h1>Ask FTF</h1>
         <div className="header-actions">
           <div className={`status ${connected ? 'connected' : 'disconnected'}`}>
             <span className="status-dot"></span>
@@ -111,15 +111,15 @@ function App() {
         <div className="messages">
           {messages.length === 0 && (
             <div className="welcome">
-              <h2>Welcome to BigQuery Chat!</h2>
-              <p>Ask me anything about your BigQuery data. I can:</p>
+              <h2>Fashion Insights Assistant</h2>
+              <p>Ask me anything about your fashion data. I can:</p>
               <ul>
-                <li>List your datasets and tables</li>
-                <li>Show table schemas and metadata</li>
-                <li>Run SQL queries and analyze data</li>
-                <li>Answer questions in natural language</li>
+                <li>Analyze trending colors, prints, and patterns</li>
+                <li>Discover emerging styles and silhouettes</li>
+                <li>Explore women's dress level trends over time</li>
+                <li>Get insights on social media trends</li>
               </ul>
-              <p className="example">Try: "What datasets do I have?" or "Show me the schema of my users table"</p>
+              <p className="example">Try: "What are the trending colors for Spring/Summer 2025?" or "Show me the most popular prints for dresses in the last 3 months."</p>
             </div>
           )}
 
@@ -187,7 +187,7 @@ function App() {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask a question about your BigQuery data..."
+            placeholder="Ask a question about your FTF data..."
             disabled={loading || !connected}
             className="message-input"
           />
