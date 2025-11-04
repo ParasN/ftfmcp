@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import './App.css';
 
 function App() {
@@ -130,7 +132,41 @@ function App() {
                 <span className="timestamp">{new Date(msg.timestamp).toLocaleTimeString()}</span>
               </div>
               <div className="message-content">
-                {msg.content}
+                {msg.role === 'assistant' ? (
+                  <ReactMarkdown
+                    className="markdown-body"
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      table: ({ children, ...props }) => (
+                        <div className="markdown-table-wrapper">
+                          <table {...props}>{children}</table>
+                        </div>
+                      ),
+                      code: ({ inline, className, children, ...props }) => {
+                        const content = String(children).replace(/\n$/, '');
+                        if (inline) {
+                          return (
+                            <code
+                              className={['markdown-inline-code', className].filter(Boolean).join(' ')}
+                              {...props}
+                            >
+                              {content}
+                            </code>
+                          );
+                        }
+                        return (
+                          <pre className={['markdown-code-block', className].filter(Boolean).join(' ')}>
+                            <code {...props}>{content}</code>
+                          </pre>
+                        );
+                      }
+                    }}
+                  >
+                    {msg.content || ''}
+                  </ReactMarkdown>
+                ) : (
+                  msg.content
+                )}
               </div>
               {msg.toolCalls && msg.toolCalls.length > 0 && (
                 <div className="tool-calls">
