@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import './App.css';
 
 function App() {
@@ -118,8 +120,9 @@ function App() {
                 <li>Discover emerging styles and silhouettes</li>
                 <li>Explore women's dress level trends over time</li>
                 <li>Get insights on social media trends</li>
+                <li>Spin up hashtag-driven landing pages</li>
               </ul>
-              <p className="example">Try: "What are the trending colors for Spring/Summer 2025?" or "Show me the most popular prints for dresses in the last 3 months."</p>
+              <p className="example">Try: "What are the trending colors for Spring/Summer 2025?" or "Give me some hashtags for my streetwear collection."</p>
             </div>
           )}
 
@@ -130,7 +133,11 @@ function App() {
                 <span className="timestamp">{new Date(msg.timestamp).toLocaleTimeString()}</span>
               </div>
               <div className="message-content">
-                {msg.content}
+                {msg.role === 'assistant' ? (
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                ) : (
+                  msg.content
+                )}
               </div>
               {msg.toolCalls && msg.toolCalls.length > 0 && (
                 <div className="tool-calls">

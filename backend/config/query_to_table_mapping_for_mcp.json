@@ -317,6 +317,44 @@
           "reason": "Trend identification by name, category, gender for filtering attribute-rich tables"
         }
       ]
+    },
+    {
+      "query_type": "trend_hashtag_collections",
+      "priority": 1,
+      "description": "Generates curated hashtags for trend-based product collections",
+      "user_personas": ["Merchandisers", "Marketing"],
+      "business_question": "What hashtags should we use for our new trend collections?",
+      "keywords": [
+        "hashtag",
+        "tagged collection",
+        "trend page",
+        "#streetwear",
+        "#urbanfashion",
+        "#hypebeast",
+        "#boho",
+        "#minimalist",
+        "#athleisure"
+      ],
+      "tables": [
+        {
+          "dataset": "nextwave",
+          "table": "trend_scores",
+          "priority": 1,
+          "reason": "Provides trend scores and names to inform hashtag generation"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "stl_trend",
+          "priority": 1,
+          "reason": "Offers trend lifecycle and category information for hashtag context"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "edited_options_bestsellers_data",
+          "priority": 2,
+          "reason": "Links trends to specific products and attributes for collection mapping"
+        }
+      ]
     }
   ],
   "fallback_behavior": {
