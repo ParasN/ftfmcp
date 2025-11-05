@@ -117,7 +117,7 @@ function App() {
               <p>Ask me anything about your fashion data. I can:</p>
               <ul>
                 <li>Analyze trending colors, prints, and patterns</li>
-                <li>Discover emerging styles and silhouettes</li>
+                <li>Discover emerging trends, styles, and silhouettes</li>
                 <li>Explore women's dress level trends over time</li>
                 <li>Get insights on social media trends</li>
               </ul>

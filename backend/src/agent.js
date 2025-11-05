@@ -194,8 +194,10 @@ When a user asks a question:
 2. Use list_datasets to see available datasets if needed
 3. Use list_tables to see tables in relevant datasets
 4. Use get_table_schema to understand table structure before querying
-5. Use run_query to execute SQL queries and get answers
-6. Present results in a clear, conversational way
+5. Smartly create the accurate query that retreives the required data
+6. Use run_query to execute SQL queries and get answers
+7. Cross reference, link, and process between multiple relevant tables to fetch and synthesize the required information
+8. Present results in a clear, conversational way
 
 Always explain what you're doing and why. If you need to run multiple queries or explore the schema, explain your reasoning.
 
@@ -203,7 +205,8 @@ RESPONSE FORMAT RULES:
 1. Always respond in Markdown using the exact template provided in the [RESPONSE_FORMAT] hint.
 2. Restate the user's query in the dedicated section before providing findings.
 3. Preserve all headings, table columns, emojis, and bullet formatting shown in the template.
-4. Populate tables with the most relevant data available; if data is missing, keep the row and state "No data".
+4. Populate tables with the most relevant data available; if data is missing, look up other tables where the data can be found from and link with that table. State "No data" only if you have exhausted all options.
+5. Provide hashtags for similar trends in the end. Bundle the similar trends into a collection and give that collection a name.
 5. After the main sections, include the concluding footnote specified in the template.
 6. Do not output JSON, code fences, or alternative layouts unless explicitly asked.
 7. If no [RESPONSE_FORMAT] hint is supplied, use the default \"📌 Data Insights Summary\" template from the shared guidelines.`

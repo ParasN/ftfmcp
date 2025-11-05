@@ -25,7 +25,7 @@
         "tiktok",
         "social media",
         "discovery",
-        "exploration",
+        "explore",
         "show me trends",
         "latest",
         "current"
@@ -60,6 +60,18 @@
           "table": "bestseller_data_attributes",
           "priority": 1,
           "reason": "Captures trending attributes through bestselling product analysis"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "stl_media",
+          "priority": 2,
+          "reason": "Primary trend visuals with imageUrl and gcs_image_urls fields for attribute-aligned imagery"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "fashion_eye_images",
+          "priority": 3,
+          "reason": "Editorial shots referenced via imgUrl to support trend visualization"
         }
       ]
     },
@@ -186,6 +198,18 @@
           "table": "options_listing_partitioned",
           "priority": 3,
           "reason": "Secondary velocity indicators at product level for trend inference"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "stl_media",
+          "priority": 2,
+          "reason": "Lifecycle visuals with imageUrl and gcs_image_urls fields to evidence stage-specific looks"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "fashion_eye_images",
+          "priority": 3,
+          "reason": "Rich imgUrl gallery for illustrating lifecycle narratives when trend media is sparse"
         }
       ]
     },
@@ -221,15 +245,15 @@
       "tables": [
         {
           "dataset": "nextwave",
-          "table": "trend_scores",
-          "priority": 1,
-          "reason": "Directly links trend_name with cohort for cohort-adjusted scores"
-        },
-        {
-          "dataset": "nextwave",
           "table": "edited_options_bestsellers_data",
           "priority": 1,
           "reason": "Links products to brand and cohort fields, showing brand adoption patterns"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "trend_scores",
+          "priority": 2,
+          "reason": "Directly links trend_name with cohort for cohort-adjusted scores"
         },
         {
           "dataset": "nextwave",
@@ -242,6 +266,18 @@
           "table": "stl_trend",
           "priority": 3,
           "reason": "Distribution tier, source, generation info for cohort characteristics"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "stl_media",
+          "priority": 2,
+          "reason": "Cohort-aligned imagery via imageUrl and gcs_image_urls fields for brand benchmarking"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "stl_similar_product",
+          "priority": 3,
+          "reason": "Similar product imagery (image_url) to show peer brand executions"
         }
       ]
     },
@@ -369,6 +405,24 @@
           "table": "bestseller_data_attributes",
           "priority": 2,
           "reason": "Attribute-level signals to build merchandising hooks for each hashtag"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "stl_media",
+          "priority": 1,
+          "reason": "Trend-aligned visuals accessible via imageUrl and gcs_image_urls for hashtag storytelling"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "fashion_eye_images",
+          "priority": 2,
+          "reason": "High-impact imgUrl references to inspire campaign creatives when trend images are sparse"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "options_listing_partitioned",
+          "priority": 3,
+          "reason": "Option-level image_urls to back shoppable hashtag curations"
         }
       ]
     }
@@ -378,6 +432,6 @@
     "action": "allow_model_exploration",
     "default_tables": ["stl_trend", "trend_scores"]
   },
-  "confidence_threshold": 0.6,
-  "max_tables_per_query": 4
+  "confidence_threshold": 0.5,
+  "max_tables_per_query": 6
 }
