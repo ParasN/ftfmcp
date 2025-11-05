@@ -353,6 +353,12 @@
           "table": "edited_options_bestsellers_data",
           "priority": 2,
           "reason": "Links trends to specific products and attributes for collection mapping"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "bestseller_data_attributes",
+          "priority": 2,
+          "reason": "Attribute-level signals to build merchandising hooks for each hashtag"
         }
       ]
     }
