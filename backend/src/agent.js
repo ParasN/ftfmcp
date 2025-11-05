@@ -1,7 +1,17 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import path from 'node:path';
 import { listDatasets, listTables, getTableSchema, runQuery, forecast } from './bigquery.js';
 import { getQueryRoutingSuggestion } from './queryRouter.js';
-import { buildResponseFormatHint, validateResponseAgainstTemplate } from './responseSchema.js';
+import { buildResponseFormatHint, validateResponseAgainstTemplate, getResponseSchema } from './responseSchema.js';
+import { MoodboardGenerator } from './moodboardGenerator.js';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const MOODBOARD_TRIGGER_KEYWORD = 'MOODBOARD_RA';
+const RA_INPUT_PATH = path.resolve(__dirname, '../config/mock_ra_input.json');
 
 const tools = [
   {
@@ -149,10 +159,319 @@ export class AgenticOrchestrator {
     this.genAI = new GoogleGenerativeAI(apiKey);
     this.conversationHistory = [];
     this.routingHistory = [];
+    this.moodboardGenerator = new MoodboardGenerator();
+    this.pendingMoodboard = null;
+  }
+
+  parseJsonBlock(text) {
+    if (!text) {
+      return null;
+    }
+
+    const firstBrace = text.indexOf('{');
+    const lastBrace = text.lastIndexOf('}');
+
+    if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+      return null;
+    }
+
+    const candidate = text.slice(firstBrace, lastBrace + 1);
+
+    try {
+      const parsed = JSON.parse(candidate);
+      return parsed;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  loadRaInput() {
+    try {
+      const raw = readFileSync(RA_INPUT_PATH, 'utf-8');
+      return JSON.parse(raw);
+    } catch (error) {
+      console.error('Failed to load RA input:', error);
+      return null;
+    }
+  }
+
+  generateAttributeCombinations(raInput) {
+    if (!raInput || !raInput.attributes) {
+      return [];
+    }
+
+    // Support both the new RA input shape and the older shape:
+    // - colors may be at raInput.colors (new) or raInput.attributes.colors (old)
+    // - patterns may be at raInput.attributes.pattern or raInput.attributes.patterns
+    // - materials/fabrics may be at raInput.attributes.fabric or raInput.attributes.materials
+    const colors = raInput.colors || raInput.attributes?.colors || [];
+    const patterns = raInput.attributes?.pattern || raInput.attributes?.patterns || [];
+    const materials = raInput.attributes?.fabric || raInput.attributes?.materials || [];
+    const bricks = raInput.bricks || [];
+    const combinations = [];
+
+    const maxCombinations = 5;
+    const combinationsPerType = Math.ceil(maxCombinations / Math.max(1, patterns.length));
+
+    for (let i = 0; i < patterns.length && combinations.length < maxCombinations; i++) {
+      const pattern = patterns[i];
+
+      for (let j = 0; j < combinationsPerType && combinations.length < maxCombinations; j++) {
+        // Use Math.max to avoid modulo by zero; selections will be filtered later if empty
+        const colorIndex = (i * combinationsPerType + j) % Math.max(1, colors.length);
+        const materialIndex = (i * combinationsPerType + j) % Math.max(1, materials.length);
+
+        const selectedColors = colors.length
+          ? [colors[colorIndex], colors[(colorIndex + 1) % colors.length]].filter(Boolean)
+          : [];
+
+        combinations.push({
+          id: `trend-${i + 1}-${j + 1}`,
+          colors: selectedColors,
+          pattern: pattern,
+          material: materials[materialIndex] || null,
+          bricks: bricks,
+          // priceRange may be provided either at attributes.priceRange or top-level priceRange
+          priceRange: raInput.attributes?.priceRange || raInput.priceRange || null
+        });
+      }
+    }
+
+    return combinations.slice(0, maxCombinations);
+  }
+
+  buildMoodboardQueryInstructions(raInput, combinations) {
+    const lines = [
+      '[MOODBOARD_GENERATION_TASK]',
+      '',
+      `Trigger keyword detected: ${MOODBOARD_TRIGGER_KEYWORD}`,
+      '',
+      '# Overview',
+      'You are generating a moodboard by querying BigQuery tables to find trends and products that match the given attribute combinations.',
+      '',
+      '# Range Architecture Input',
+      `- RA ID: ${raInput.id || 'Unspecified'}`,
+      `- Brand: ${raInput.brand || 'Unspecified'}`,
+      `- Delivery Month: ${raInput.month || 'Unspecified'}`,
+      `- Bricks: ${(raInput.bricks || []).join(', ') || 'None'}`,
+      `- Colors: ${(raInput.colors || []).join(', ') || 'None'}`,
+      `- Patterns: ${(raInput.attributes?.pattern || []).join(', ') || 'None'}`,
+      `- Fabrics: ${(raInput.attributes?.fabric || []).join(', ') || 'None'}`,
+      `- Price Range: ${raInput.attributes?.priceRange || 'Unspecified'}`,
+      '',
+      '# Attribute Combinations (Trends)',
+      'The following attribute combinations have been generated from the RA input. Each combination represents a potential trend to explore:',
+      ''
+    ];
+
+    combinations.forEach((combo, idx) => {
+      lines.push(`## Combination ${idx + 1}: ${combo.id}`);
+      lines.push(`- Colors: ${combo.colors.join(', ')}`);
+      lines.push(`- Pattern: ${combo.pattern}`);
+      lines.push(`- Material: ${combo.material}`);
+      lines.push(`- Bricks: ${combo.bricks.join(', ')}`);
+      lines.push(`- Price Range: ${combo.priceRange || 'Any'}`);
+      lines.push('');
+    });
+
+    lines.push(
+      '# Your Task',
+      '',
+      '1. **Query BigQuery Tables**: For each attribute combination above, use the BigQuery tools (get_table_schema, run_query) to:',
+      '   - Find trends matching the color, pattern, and material attributes',
+      '   - Retrieve trend names, lifecycle stages, momentum, scores, and visual URLs',
+      '   - Look for products in the specified bricks',
+      '   - Filter by the price range if applicable',
+      '',
+      '2. **Build SQL Queries**: Create SQL queries that:',
+      '   - JOIN multiple tables if needed to get complete trend information',
+      '   - Filter by the attribute values (colors, patterns, materials)',
+      '   - Filter by bricks if applicable',
+      '   - Order by trend scores or momentum to get the best matches',
+      '   - LIMIT results to top 1-2 trends per combination',
+      '',
+      '3. **Extract Key Information**: From the query results, extract:',
+      '   - Trend Name',
+      '   - Lifecycle Stage (Emerging, Growth, Maturity, Decline)',
+      '   - Momentum (Rising, Accelerating, Sustaining, Slowing)',
+      '   - Trend Score (numeric value)',
+      '   - "Why It Fits" narrative (explain how this trend matches the attribute combination and brand DNA)',
+      '   - Visual URL (image/media link)',
+      '',
+      '4. **Generate Moodboard Output**: Return a markdown section with the heading "#### 🔗 Trend Alignment Matrix" followed by a table:',
+      '```',
+      '#### 🔗 Trend Alignment Matrix',
+      '',
+      '| Trend Name | Lifecycle | Momentum | Score | Why It Fits | Visual |',
+      '|------------|-----------|----------|-------|-------------|--------|',
+      '| [name] | [lifecycle] | [momentum] | [score] | [explanation] | [url or description] |',
+      '```',
+      '',
+      '# Important Notes',
+      '- Use the recommended tables from the ROUTING_HINT',
+      '- Ensure SQL queries are syntactically correct for BigQuery',
+      '- If exact attribute matches are not found, look for similar or related attributes',
+      '- Reference the specific attribute combination in the "Why It Fits" explanation',
+      '- If no visual URL is available in the data, describe what the visual should show',
+      '- MUST include the heading "#### 🔗 Trend Alignment Matrix" exactly as shown above',
+      '',
+      '[/MOODBOARD_GENERATION_TASK]'
+    );
+
+    return lines.join('\n');
+  }
+  parseTrendMatrix(markdownText) {
+    const rows = [];
+    if (!markdownText) {
+      return rows;
+    }
+
+    const sectionAnchor = '#### 🔗 Trend Alignment Matrix';
+    const anchorIndex = markdownText.indexOf(sectionAnchor);
+    if (anchorIndex === -1) {
+      return rows;
+    }
+
+    const tableStart = markdownText.indexOf('|', anchorIndex);
+    if (tableStart === -1) {
+      return rows;
+    }
+
+    const tableBlock = markdownText.slice(tableStart).split('\n\n')[0];
+    const tableLines = tableBlock
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.startsWith('|'));
+
+    if (tableLines.length <= 2) {
+      return rows;
+    }
+
+    for (const line of tableLines.slice(2)) {
+      const cells = line
+        .split('|')
+        .map(cell => cell.trim())
+        .filter(Boolean);
+
+      if (cells.length < 6) {
+        continue;
+      }
+
+      const [trendName, lifecycle, momentum, scoreCell, whyItFits, visualCell] = cells;
+
+      const scoreMatch = scoreCell?.match(/-?\d+(\.\d+)?/);
+      const score = scoreMatch ? Number(scoreMatch[0]) : null;
+
+      let visualUrl = null;
+      const linkMatch = visualCell?.match(/\((https?:[^\s)]+)\)/i);
+      if (linkMatch) {
+        visualUrl = linkMatch[1];
+      } else if (visualCell?.startsWith('http')) {
+        visualUrl = visualCell.split(/\s+/)[0];
+      }
+
+      rows.push({
+        name: trendName || null,
+        lifecycle: lifecycle || null,
+        momentum: momentum || null,
+        score,
+        whyItFits: whyItFits || '',
+        visualUrl
+      });
+    }
+
+    return rows;
+  }
+
+  async prepareMoodboardContext(userMessage) {
+    const hasTriggerKeyword = typeof userMessage === 'string' &&
+      userMessage.toUpperCase().includes(MOODBOARD_TRIGGER_KEYWORD);
+
+    if (!hasTriggerKeyword) {
+      return null;
+    }
+
+    let raInput = null;
+
+    try {
+      const lines = userMessage.split('\n');
+      const triggerLineIndex = lines.findIndex(line =>
+        line.toUpperCase().includes(MOODBOARD_TRIGGER_KEYWORD)
+      );
+
+      if (triggerLineIndex !== -1 && triggerLineIndex < lines.length - 1) {
+        const jsonContent = lines.slice(triggerLineIndex + 1).join('\n');
+        raInput = JSON.parse(jsonContent);
+      }
+    } catch (err) {
+      console.log('Could not parse RA input from message, falling back to file');
+    }
+
+    if (!raInput) {
+      raInput = this.loadRaInput();
+    }
+
+    if (!raInput) {
+      return {
+        routingSuggestion: null,
+        error: 'Failed to load RA input. Please ensure mock_ra_input.json exists or provide valid JSON in the message.'
+      };
+    }
+
+    const approach = 'cohort-based';
+    const brandDNA = raInput.brand
+      ? this.moodboardGenerator.getBrandDNA(raInput.brand)
+      : null;
+
+    const payload = this.moodboardGenerator.buildBasePayload(raInput, brandDNA, approach);
+
+    const combinations = this.generateAttributeCombinations(raInput);
+    const contextBlock = this.buildMoodboardQueryInstructions(raInput, combinations);
+
+    const routingSuggestion = getQueryRoutingSuggestion('trend analysis lifecycle momentum scores attributes');
+    const schemaConfig = getResponseSchema('moodboard_generation');
+
+    return {
+      routingSuggestion: {
+        ...routingSuggestion,
+        queryType: 'moodboard_generation',
+        confidence: 1,
+        matchedKeywords: ['moodboard', 'trend', 'attributes'],
+        responseSchema: schemaConfig
+      },
+      payload,
+      raInput,
+      combinations,
+      contextBlock
+    };
   }
 
   async chat(userMessage) {
-    const routingSuggestion = getQueryRoutingSuggestion(userMessage);
+    this.pendingMoodboard = null;
+
+    const moodboardPreparation = await this.prepareMoodboardContext(userMessage);
+
+    let routingSuggestion;
+    let augmentedMessage = userMessage;
+
+    if (moodboardPreparation) {
+      routingSuggestion = moodboardPreparation.routingSuggestion;
+      augmentedMessage = `${userMessage}\n\n${moodboardPreparation.contextBlock}`;
+      // If the moodboard preparation produced a payload, include it in the message
+      if (moodboardPreparation.payload) {
+        try {
+          const payloadStr = JSON.stringify(moodboardPreparation.payload, null, 2);
+          augmentedMessage = `${augmentedMessage}\n\n[MOODBOARD_PAYLOAD]\n${payloadStr}\n[/MOODBOARD_PAYLOAD]`;
+        } catch (err) {
+          // If payload can't be stringified, include a fallback note
+          augmentedMessage = `${augmentedMessage}\n\n[MOODBOARD_PAYLOAD]\n<unserializable payload>\n[/MOODBOARD_PAYLOAD]`;
+        }
+      }
+      this.pendingMoodboard = moodboardPreparation;
+    } else {
+      routingSuggestion = getQueryRoutingSuggestion(userMessage);
+    }
+
     const routingHint = formatRoutingHint(routingSuggestion);
     const schemaHint = routingSuggestion.responseSchema ? buildResponseFormatHint(routingSuggestion.responseSchema) : '';
 
@@ -166,7 +485,7 @@ export class AgenticOrchestrator {
       hintBlocks.push(`[RESPONSE_FORMAT]\n${schemaHint}\n[/RESPONSE_FORMAT]\nReturn the JSON payload exactly once using this structure.`);
     }
 
-    const combinedMessage = [userMessage, ...hintBlocks].join('\n\n');
+    const combinedMessage = [augmentedMessage, ...hintBlocks].join('\n\n');
 
     this.conversationHistory.push({
       role: 'user',
@@ -325,11 +644,44 @@ RESPONSE FORMAT RULES:
       pendingMessage = correctionPrompt;
     }
 
+    let attachments = [];
+    let payload = null;
+
+    if (this.pendingMoodboard) {
+      const trendRows = this.parseTrendMatrix(finalText);
+      this.moodboardGenerator.applyTrendMatrix(
+        this.pendingMoodboard.payload,
+        trendRows,
+        this.pendingMoodboard.payload.approach
+      );
+
+      const pdfPath = await this.moodboardGenerator.renderPdfFromPayload(this.pendingMoodboard.payload);
+      if (pdfPath) {
+        attachments = [
+          {
+            type: 'application/pdf',
+            path: `/api/moodboards/${path.basename(pdfPath)}`,
+            absolutePath: pdfPath
+          }
+        ];
+      }
+
+      payload = {
+        ra: this.pendingMoodboard.payload.ra,
+        brandDNA: this.pendingMoodboard.payload.brandDNA,
+        moodboard: this.pendingMoodboard.payload
+      };
+
+      this.pendingMoodboard = null;
+    }
+
     return {
       text: finalText,
       toolCalls: aggregatedToolCalls,
       routingSuggestion,
-      formatValidation: validationResult
+      formatValidation: validationResult,
+      attachments,
+      payload
     };
   }
 

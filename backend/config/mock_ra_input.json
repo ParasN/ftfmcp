@@ -1,0 +1,29 @@
+{
+  "id": "RA-001",
+  "brand": "Zara",
+  "month": "2024-01",
+  "bricks": [
+    "Jackets",
+    "Pants"
+  ],
+  "colors": [
+    "Black",
+    "White",
+    "Red",
+    "Orange",
+    "Blue"
+  ],
+  "attributes": {
+    "pattern": [
+      "Geometric",
+      "Solid",
+      "Digital",
+      "Abstract"
+    ],
+    "fabric": [
+      "Cotton",
+      "Wool"
+    ],
+    "priceRange": "999 to 4999"
+  }
+}

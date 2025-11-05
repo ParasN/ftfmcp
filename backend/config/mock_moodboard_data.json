@@ -1,0 +1,156 @@
+{
+  "brand_dna": [
+    {
+      "brand": "Nike",
+      "cohort": "Athletic Performance",
+      "attributeFingerprint": {
+        "dominantAttributes": ["Performance", "Innovation", "Bold"],
+        "colorPalette": ["Black", "White", "Red", "Orange"],
+        "pricePosition": "Premium",
+        "lifecycleFilters": ["Growth", "Maturity"]
+      },
+      "messaging": [
+        "Champion high-intensity training needs with breathable innovation.",
+        "Showcase bold directional statements grounded in performance credibility.",
+        "Reinforce agility and speed through dynamic patterning and energetic palettes."
+      ]
+    },
+    {
+      "brand": "Adidas",
+      "cohort": "Urban Athleisure",
+      "attributeFingerprint": {
+        "dominantAttributes": ["Comfort", "Street-ready", "Adaptive"],
+        "colorPalette": ["Black", "Grey", "Pastel Blue", "Lime"],
+        "pricePosition": "Mid Premium",
+        "lifecycleFilters": ["Emerging", "Growth"]
+      },
+      "messaging": [
+        "Blend street-ready silhouettes with adaptive comfort technologies.",
+        "Underpin freshness through tonal layering and engineered textures."
+      ]
+    }
+  ],
+  "trend_library": [
+    {
+      "id": "trend-neo-kinetic",
+      "name": "Neo-Kinetic Mesh",
+      "cohort": "Athletic Performance",
+      "bricks": ["Athletic Footwear", "Running Apparel"],
+      "categories": ["Footwear", "Athletic Tops"],
+      "attributes": {
+        "colors": ["Black", "Red", "Crimson"],
+        "patterns": ["Geometric", "Digital"],
+        "materials": ["Mesh", "Recycled Synthetics"],
+        "silhouettes": ["Lightweight Trainer", "Compression Top"]
+      },
+      "lifecycle": "Growth",
+      "momentum": "Rising",
+      "scores": {
+        "competition": 84,
+        "social": 72,
+        "brandAffinity": 88
+      },
+      "rationale": [
+        "Mesh-focused designs align with Nike's breathability promise.",
+        "Geometric blocking mirrors the brand's dynamic visual language."
+      ],
+      "image": "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?auto=format&fit=crop&w=800&q=80",
+      "hashtags": ["#NeoKinetic", "#NikeRun", "#MeshMomentum"]
+    },
+    {
+      "id": "trend-charged-neon",
+      "name": "Charged Neon Gradient",
+      "cohort": "Athletic Performance",
+      "bricks": ["Running Apparel", "Athletic Accessories"],
+      "categories": ["Athleisure", "Accessories"],
+      "attributes": {
+        "colors": ["Black", "Orange", "Volt"],
+        "patterns": ["Gradient", "Minimal"],
+        "materials": ["Synthetic", "Dri-Fit"],
+        "silhouettes": ["Windbreaker", "Track Pant", "Visor"]
+      },
+      "lifecycle": "Emerging",
+      "momentum": "Accelerating",
+      "scores": {
+        "competition": 76,
+        "social": 86,
+        "brandAffinity": 81
+      },
+      "rationale": [
+        "High social buzz from run crews seeking night-visibility gear.",
+        "Aligns with Nike's bold color blocking heritage."
+      ],
+      "image": "https://images.unsplash.com/photo-1528701800489-20be3c00eda3?auto=format&fit=crop&w=800&q=80",
+      "hashtags": ["#ChargeForward", "#NightRun", "#SwooshGlow"]
+    },
+    {
+      "id": "trend-ultra-knit",
+      "name": "Ultra Knit Flex",
+      "cohort": "Athletic Performance",
+      "bricks": ["Athletic Footwear", "Running Apparel"],
+      "categories": ["Footwear", "Athletic Bottoms"],
+      "attributes": {
+        "colors": ["White", "Grey", "Black"],
+        "patterns": ["Minimal", "Engineered Knit"],
+        "materials": ["Flyknit", "Recycled Yarn"],
+        "silhouettes": ["Sock-fit Sneaker", "Second-Skin Legging"]
+      },
+      "lifecycle": "Maturity",
+      "momentum": "Sustaining",
+      "scores": {
+        "competition": 91,
+        "social": 68,
+        "brandAffinity": 92
+      },
+      "rationale": [
+        "Flyknit innovation continues to outperform in premium price tiers.",
+        "Maintains Nike's dominance in lightweight, adaptive fits."
+      ],
+      "image": "https://images.unsplash.com/photo-1514996937319-344454492b37?auto=format&fit=crop&w=800&q=80",
+      "hashtags": ["#UltraKnitFlex", "#FlyknitFocus", "#AdaptiveStride"]
+    },
+    {
+      "id": "trend-react-fabric",
+      "name": "React Fabric Lab",
+      "cohort": "Athletic Performance",
+      "bricks": ["Running Apparel"],
+      "categories": ["Athletic Tops", "Athletic Bottoms"],
+      "attributes": {
+        "colors": ["Black", "Red", "Volt"],
+        "patterns": ["Abstract", "Panelled"],
+        "materials": ["Synthetic", "Mesh"],
+        "silhouettes": ["Panelled Tee", "Muscle Tank", "Short Short"]
+      },
+      "lifecycle": "Growth",
+      "momentum": "Stabilizing",
+      "scores": {
+        "competition": 79,
+        "social": 74,
+        "brandAffinity": 85
+      },
+      "rationale": [
+        "Panels emphasize targeted support zones demanded in athlete testing.",
+        "Color pops reinforce high-energy team looks."
+      ],
+      "image": "https://images.unsplash.com/photo-1599058917212-d750089bc07b?auto=format&fit=crop&w=800&q=80",
+      "hashtags": ["#ReactFabric", "#PanelPower", "#SupportMapped"]
+    }
+  ],
+  "approach_weights": {
+    "cohort-based": {
+      "competition": 0.7,
+      "social": 0.2,
+      "brandAffinity": 0.1
+    },
+    "social-fusion": {
+      "competition": 0.3,
+      "social": 0.6,
+      "brandAffinity": 0.1
+    },
+    "attribute-fingerprint": {
+      "competition": 0.4,
+      "social": 0.2,
+      "brandAffinity": 0.4
+    }
+  }
+}

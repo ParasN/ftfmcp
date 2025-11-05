@@ -1,10 +1,63 @@
 {
   "query_mappings": [
     {
+      "query_type": "moodboard_generation",
+      "priority": 0,
+      "description": "Generate a brand-aligned moodboard from Range Architecture inputs and mock brand DNA/trend fixtures.",
+      "user_personas": [
+        "Fashion Designers",
+        "Vendors",
+        "Buyers"
+      ],
+      "business_question": "How do I translate an RA into a visual moodboard with rationale?",
+      "keywords": [
+        "moodboard",
+        "range architecture",
+        "ra-",
+        "brand dna",
+        "visual direction",
+        "generate moodboard",
+        "ra moodboard",
+        "moodboard_ra",
+        "brand alignment",
+        "trend tiles",
+        "visual brief"
+      ],
+      "tables": [
+        {
+          "dataset": "nextwave",
+          "table": "trend_scores",
+          "priority": 1,
+          "reason": "POC fixtures powering RA to trend translations"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "edited_options_bestsellers_data",
+          "priority": 1,
+          "reason": "Bestsellers reflect current trends with LLM-mapped attributes and trend_id linkage"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "bestseller_data_attributes",
+          "priority": 1,
+          "reason": "Captures trending attributes through bestselling product analysis"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "stl_media",
+          "priority": 2,
+          "reason": "Primary trend visuals with imageUrl and gcs_image_urls fields for attribute-aligned imagery"
+        }
+     ]
+    },
+    {
       "query_type": "trend_discovery_exploration",
       "priority": 1,
       "description": "Discovery of new trend entities, filtering by category/brick, ordered by trend score or recency",
-      "user_personas": ["Fashion Designers", "Buyers"],
+      "user_personas": [
+        "Fashion Designers",
+        "Buyers"
+      ],
       "business_question": "What's new, what's emerging, what should I be paying attention to?",
       "keywords": [
         "trending",
@@ -78,8 +131,11 @@
     {
       "query_type": "performance_sales_intelligence",
       "priority": 1,
-      "description": "Access to internal sales signals—sell-through, velocity, RTV, inventory exposure, regional demand",
-      "user_personas": ["Inventory Planners", "Buyers"],
+      "description": "Access to internal sales signals\u2014sell-through, velocity, RTV, inventory exposure, regional demand",
+      "user_personas": [
+        "Inventory Planners",
+        "Buyers"
+      ],
       "business_question": "What's actually selling? What's moving fast or slow?",
       "keywords": [
         "sell-through",
@@ -139,7 +195,10 @@
       "query_type": "lifecycle_momentum_analysis",
       "priority": 1,
       "description": "Access to lifecycle classifications, stage transitions, momentum metrics, second-order velocity indicators",
-      "user_personas": ["Buyers", "Category Managers"],
+      "user_personas": [
+        "Buyers",
+        "Category Managers"
+      ],
       "business_question": "Where is this trend in its lifecycle? Should I buy now or wait?",
       "keywords": [
         "lifecycle",
@@ -217,7 +276,10 @@
       "query_type": "brand_cohort_relevance",
       "priority": 1,
       "description": "Access to brand cohorting data, cohort-adjusted scores, brand adoption patterns",
-      "user_personas": ["Buyers", "Brand Managers"],
+      "user_personas": [
+        "Buyers",
+        "Brand Managers"
+      ],
       "business_question": "Is this trend right for my brand? Who else is doing this?",
       "keywords": [
         "brand",
@@ -284,8 +346,12 @@
     {
       "query_type": "attribute_product_deep_dive",
       "priority": 1,
-      "description": "Granular attribute exploration—sleeve, neck, length, print, color, fit, fabric from PLM-FTF taxonomy",
-      "user_personas": ["Fashion Designers", "Buyers", "Product Developers"],
+      "description": "Granular attribute exploration\u2014sleeve, neck, length, print, color, fit, fabric from PLM-FTF taxonomy",
+      "user_personas": [
+        "Fashion Designers",
+        "Buyers",
+        "Product Developers"
+      ],
       "business_question": "What exact attributes, colors, silhouettes are defining this trend?",
       "keywords": [
         "attribute",
@@ -360,7 +426,11 @@
       "query_type": "trend_hashtag_collections",
       "priority": 1,
       "description": "Create Ajio-ready hashtag collections linked to trend data, product assortments, and refresh cadences.",
-      "user_personas": ["Marketing", "Merchandising", "Social Commerce"],
+      "user_personas": [
+        "Marketing",
+        "Merchandising",
+        "Social Commerce"
+      ],
       "business_question": "Which trend hashtags should Ajio activate and how do they connect to products?",
       "keywords": [
         "hashtag",
@@ -430,7 +500,10 @@
   "fallback_behavior": {
     "description": "If query classification confidence is below threshold or no clear match",
     "action": "allow_model_exploration",
-    "default_tables": ["stl_trend", "trend_scores"]
+    "default_tables": [
+      "stl_trend",
+      "trend_scores"
+    ]
   },
   "confidence_threshold": 0.5,
   "max_tables_per_query": 6

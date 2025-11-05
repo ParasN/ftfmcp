@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { mkdirSync } from 'node:fs';
 import { initializeBigQuery } from './bigquery.js';
 import { AgenticOrchestrator } from './agent.js';
 
@@ -19,6 +20,10 @@ app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:5173'
 }));
 app.use(express.json());
+
+const moodboardDir = join(__dirname, '../generated/moodboards');
+mkdirSync(moodboardDir, { recursive: true });
+app.use('/api/moodboards', express.static(moodboardDir));
 
 let orchestrator = null;
 
@@ -82,6 +87,10 @@ app.post('/api/chat', async (req, res) => {
       success: true,
       response: response.text,
       toolCalls: response.toolCalls,
+      attachments: response.attachments || [],
+      routingSuggestion: response.routingSuggestion,
+      formatValidation: response.formatValidation,
+      payload: response.payload || null,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
