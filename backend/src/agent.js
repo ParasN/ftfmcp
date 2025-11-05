@@ -137,21 +137,126 @@ function formatRoutingHint(suggestion) {
   return lines.join('\n');
 }
 
-async function executeToolCall(toolName, args) {
-  switch (toolName) {
-    case 'list_datasets':
-      return await listDatasets();
-    case 'list_tables':
-      return await listTables(args.datasetId);
-    case 'get_table_schema':
-      return await getTableSchema(args.datasetId, args.tableId);
-    case 'run_query':
-      return await runQuery(args.sqlQuery, args.maxResults || 100);
-    case 'forecast':
-      return await forecast(args.datasetId, args.tableId, args.dateColumn, args.valueColumn, args.horizonDays || 30);
-    default:
-      throw new Error(`Unknown tool: ${toolName}`);
+function extractWhereConditions(sqlQuery) {
+  if (typeof sqlQuery !== 'string') {
+    return [];
   }
+
+  const whereMatch = sqlQuery.match(/where\s+([\s\S]+?)(group\s+by|order\s+by|limit|$)/i);
+  if (!whereMatch) {
+    return [];
+  }
+
+  const normalizedClause = whereMatch[1]
+    .replace(/\s+/g, ' ')
+    .replace(/\s+\)/g, ')')
+    .trim();
+
+  return normalizedClause
+    .split(/\band\b/gi)
+    .map(condition => condition.trim())
+    .filter(Boolean);
+}
+
+function extractStringLiterals(sqlQuery) {
+  if (typeof sqlQuery !== 'string') {
+    return [];
+  }
+
+  const literals = new Set();
+  const regex = /'([^']+)'/g;
+  let match;
+
+  while ((match = regex.exec(sqlQuery)) !== null) {
+    const candidate = match[1]?.trim();
+    if (candidate) {
+      literals.add(candidate);
+    }
+  }
+
+  return Array.from(literals);
+}
+
+function buildLiteralVariations(value) {
+  const variations = new Set();
+
+  const compact = value.replace(/\s+/g, '');
+  if (compact && compact !== value) {
+    variations.add(compact);
+  }
+
+  const dashed = value.replace(/\s+/g, '-');
+  if (dashed && dashed !== value) {
+    variations.add(dashed);
+  }
+
+  const spaced = value.replace(/[-_]+/g, ' ');
+  if (spaced && spaced !== value) {
+    variations.add(spaced);
+  }
+
+  const snake = value.replace(/\s+/g, '_');
+  if (snake && snake !== value) {
+    variations.add(snake);
+  }
+
+  const plural = value.endsWith('s') ? value.slice(0, -1) : `${value}s`;
+  if (plural && plural !== value) {
+    variations.add(plural);
+  }
+
+  return Array.from(variations);
+}
+
+function buildNoResultGuidance(sqlQuery, routingSuggestion) {
+  const guidance = {
+    message: 'No rows returned. Iterate on the SQL until you surface relevant data.',
+    recommendedActions: []
+  };
+
+  const conditions = extractWhereConditions(sqlQuery);
+  if (conditions.length > 0) {
+    guidance.recommendedActions.push(
+      'Relax or temporarily remove individual WHERE filters to broaden the result set.'
+    );
+
+    guidance.filterHints = conditions.map(condition => `Consider loosening: ${condition}`);
+  }
+
+  const literals = extractStringLiterals(sqlQuery);
+  if (literals.length > 0) {
+    const alternativeValues = literals
+      .map(value => ({
+        original: value,
+        alternates: buildLiteralVariations(value)
+      }))
+      .filter(entry => entry.alternates.length > 0);
+
+    if (alternativeValues.length > 0) {
+      guidance.recommendedActions.push(
+        'Try synonyms or formatting variations for attribute filters that use equality or LIKE conditions.'
+      );
+      guidance.alternativeValues = alternativeValues;
+    }
+  }
+
+  const alternateTables = (routingSuggestion?.tables || [])
+    .map(table => `${table.dataset}.${table.table}${table.reason ? ` (${table.reason})` : ''}`);
+
+  if (alternateTables.length > 0) {
+    guidance.recommendedActions.push(
+      'Query another recommended table that might contain the attribute or image you need.'
+    );
+    guidance.alternateTables = alternateTables;
+  }
+
+  if (guidance.recommendedActions.length === 0) {
+    guidance.recommendedActions.push(
+      'Inspect the schema and adjust the query to broaden the search scope.'
+    );
+  }
+
+  return guidance;
 }
 
 export class AgenticOrchestrator {
@@ -161,6 +266,38 @@ export class AgenticOrchestrator {
     this.routingHistory = [];
     this.moodboardGenerator = new MoodboardGenerator();
     this.pendingMoodboard = null;
+  }
+
+  async executeToolCall(toolName, args, routingSuggestion) {
+    switch (toolName) {
+      case 'list_datasets':
+        return await listDatasets();
+      case 'list_tables':
+        return await listTables(args.datasetId);
+      case 'get_table_schema':
+        return await getTableSchema(args.datasetId, args.tableId);
+      case 'run_query': {
+        const result = await runQuery(args.sqlQuery, args.maxResults || 100);
+        if (!result || result.totalRows > 0) {
+          return result;
+        }
+
+        return {
+          ...result,
+          retryGuidance: buildNoResultGuidance(args.sqlQuery, routingSuggestion)
+        };
+      }
+      case 'forecast':
+        return await forecast(
+          args.datasetId,
+          args.tableId,
+          args.dateColumn,
+          args.valueColumn,
+          args.horizonDays || 30
+        );
+      default:
+        throw new Error(`Unknown tool: ${toolName}`);
+    }
   }
 
   parseJsonBlock(text) {
@@ -513,10 +650,11 @@ When a user asks a question:
 2. Use list_datasets to see available datasets if needed
 3. Use list_tables to see tables in relevant datasets
 4. Use get_table_schema to understand table structure before querying
-5. Smartly create the accurate query that retreives the required data
+5. Smartly create the accurate query that retrieves the required data
 6. Use run_query to execute SQL queries and get answers
-7. Cross reference, link, and process between multiple relevant tables to fetch and synthesize the required information
-8. Present results in a clear, conversational way
+7. If a query returns zero rows or incomplete coverage, iteratively adjust the SQL—loosen filters, try alternate attribute spellings, or switch to other recommended tables—before concluding no data exists.
+8. Cross reference, link, and process between multiple relevant tables to fetch and synthesize the required information
+9. Present results in a clear, conversational way
 
 Always explain what you're doing and why. If you need to run multiple queries or explore the schema, explain your reasoning.
 
@@ -563,7 +701,7 @@ RESPONSE FORMAT RULES:
           };
 
           try {
-            const result = await executeToolCall(functionCall.name, functionCall.args);
+            const result = await this.executeToolCall(functionCall.name, functionCall.args, routingSuggestion);
             toolCall.result = result;
             
             functionResponses.push({

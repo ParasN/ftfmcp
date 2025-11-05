@@ -3,10 +3,12 @@
   "common": {
     "guidelines": [
       "Always respond in Markdown using the provided template structure.",
+      "Always try to classify user query into one of the query_type as specified in query_mappings",
+      "Always look for info in at least two tables",
       "Restate the user's query in the designated section.",
       "Keep tone expert but approachable for fashion professionals.",
       "Use emojis exactly as shown to reinforce section intent.",
-      "Fill tables with the most relevant data you can source; if unavailable, keep the row but state \"No data\".",
+      "Fill tables with the most relevant data you can source; if unavailable, search more tables, if still unavailable, start reducing query parameters and relax filters one by one until you find some data.",
       "Whenever hashtags are requested (explicitly or through the response schema), supply 3-5 Ajio-ready hashtags with a short rationale and product linkage.",
       "Surface the inherent attribute mix (print, pattern, color, sleeve, neck, style, etc.) for every trend or hashtag you highlight.",
       "Include at least one trustworthy image URL per highlighted trend/hashtag, using the most relevant attribute-aligned imagery from the approved tables.",
@@ -18,37 +20,6 @@
     "reminder": "Consistency matters\u2014follow headings, table columns, and bullet styles precisely."
   },
   "schemas": {
-    "default": {
-      "query_type": "generic",
-      "version": 1,
-      "template_lines": [
-        "### \ud83d\udccc Data Insights Summary",
-        "",
-        "**Key Takeaway:** [One-sentence headline answer]",
-        "",
-        "---",
-        "",
-        "#### \ud83d\udcca Highlights",
-        "",
-        "- \u2022 [Insight 1]",
-        "- \u2022 [Insight 2]",
-        "- \u2022 [Insight 3]",
-        "",
-        "#### \u2705 Next Steps",
-        "",
-        "- \u2022 [Recommended action 1]",
-        "- \u2022 [Recommended action 2]",
-        "",
-        "---",
-        "*Based on available data and tools consulted*"
-      ],
-      "required_sections": [
-        "### \ud83d\udccc Data Insights Summary",
-        "**Key Takeaway:**",
-        "#### \ud83d\udcca Highlights",
-        "#### \u2705 Next Steps"
-      ]
-    },
     "trend_discovery_exploration": {
       "query_type": "trend_discovery_exploration",
       "version": 1,
@@ -478,6 +449,58 @@
         "#### \ud83c\udfaf Brand Alignment Score",
         "#### \ud83c\udfa8 Palette + Hashtag Hooks",
         "#### \ud83d\udcc1 Moodboard PDF"
+      ]
+    },
+    "default": {
+      "query_type": "generic",
+      "version": 1,
+            "template_lines": [
+        "### \ud83d\udd0d Trend Discovery Report",
+        "",
+        "**Key Finding:** [1-sentence headline answer]",
+        "",
+        "---",
+        "",
+        "#### \ud83d\udcca Top Trending Styles",
+        "",
+        "| Trend Name | Category | Score | Growth | Stage | Last Seen | Attribute Mix | Visual Link |",
+        "|------------|----------|-------|--------|-------|-----------|---------------|-------------|",
+        "| [Trend 1] | [Category] | [Score] | [Growth] | [Stage Emoji + Label] | [Last Seen] | [Print + Pattern + Color + Silhouette callouts] | [View Trend Visual](https://...) |",
+        "| [Trend 2] | [Category] | [Score] | [Growth] | [Stage Emoji + Label] | [Last Seen] | [Print + Pattern + Color + Silhouette callouts] | [View Trend Visual](https://...) |",
+        "| [Trend 3] | [Category] | [Score] | [Growth] | [Stage Emoji + Label] | [Last Seen] | [Print + Pattern + Color + Silhouette callouts] | [View Trend Visual](https://...) |",
+        "",
+        "#### #\ufe0f\u20e3 Trend Hashtag Collections",
+        "",
+        "| Hashtag | Trend Focus | Product Lens | Attribute Mix | Refresh Cadence | Data Signal | Visual Link |",
+        "|---------|-------------|--------------|---------------|-----------------|-------------|-------------|",
+        "| #[Hashtag 1] | [Style/Trend] | [Category or Merch Story] | [Print/Pattern/Color/Silhouette] | [Weekly/Bi-weekly/etc.] | [Source + Metric] | [View Trend Visual](https://...) |",
+        "| #[Hashtag 2] | [Style/Trend] | [Category or Merch Story] | [Print/Pattern/Color/Silhouette] | [Weekly/Bi-weekly/etc.] | [Source + Metric] | [View Trend Visual](https://...) |",
+        "| #[Hashtag 3] | [Style/Trend] | [Category or Merch Story] | [Print/Pattern/Color/Silhouette] | [Weekly/Bi-weekly/etc.] | [Source + Metric] | [View Trend Visual](https://...) |",
+        "",
+        "Hashtag Execution Notes: [1-2 sentences on landing page positioning, content hooks, or influencer alignment]",
+        "",
+        "#### \ud83d\udca1 Key Insights",
+        "",
+        "\u2022 [Insight about trend momentum or channels]",
+        "\u2022 [Insight about saturation or risk]",
+        "\u2022 [Insight about early-stage opportunities]",
+        "",
+        "#### \u2705 Recommendations",
+        "",
+        "\u2022 **Act Now:** [Actionable recommendation]",
+        "\u2022 **Monitor:** [Trend to watch]",
+        "\u2022 **Early Opportunity:** [Emerging idea]",
+        "",
+        "---",
+        "*Based on analysis of [count] trending items across [number] categories*"
+      ],
+      "required_sections": [
+        "### \ud83d\udd0d Trend Discovery Report",
+        "**Key Finding:**",
+        "#### \ud83d\udcca Top Trending Styles",
+        "#### #\ufe0f\u20e3 Trend Hashtag Collections",
+        "#### \ud83d\udca1 Key Insights",
+        "#### \u2705 Recommendations"
       ]
     }
   }
