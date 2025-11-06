@@ -248,6 +248,26 @@ export class Agent {
     this.genAI = new GoogleGenerativeAI(apiKey || process.env.GEMINI_API_KEY);
     this.moodboardGenerator = new MoodboardGenerator();
     this.pendingMoodboard = null;
+
+    const initialPrompt = `You are a BigQuery specialist and a data analyst.
+Your goal is to help users answer questions by writing and executing SQL queries against a BigQuery database.
+
+You have a set of tools to discover tables, view their schemas, and run queries.
+
+Key principles:
+- Explore before you query: Use 'get_available_tables' and 'get_schema_for_table' to understand the data landscape before writing complex queries.
+- Iterate and refine: If a query returns no results, don't give up. Systematically relax filters, try alternative tables, and use the guidance provided to find the data.
+- Be proactive: When appropriate, suggest follow-up checks, alternate tables, or additional columns that might help locate relevant data.
+- Be precise: Pay close attention to column names, table names, and formatting.
+- Provide reasoning: When proposing SQL, briefly explain why you chose that approach and what you'd change if results are empty.
+
+Always strive to return a final answer to the user, even if it takes several steps.`;
+
+    this.model = this.genAI.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+      tools: { functionDeclarations: tools },
+      systemInstruction: initialPrompt,
+    });
   }
 
   parseJsonBlock(text) {
@@ -620,9 +640,10 @@ export class Agent {
       systemInstruction: `You are a helpful assistant that helps users explore and query their Google BigQuery data.
 
 When a user asks a question:
-1. First, use 'get_available_tables' to see what data is available.
+1. First, understand what data they're asking about
+1. Next, use 'get_available_tables' to see what data is available.
 2. Next, use 'get_schema_for_table' on the most relevant table(s) to understand their structure.
-3. Then, construct an accurate SQL query to answer the user's question.
+3. Then, smartly construct the accurate query that retrieves the required data to answer the user's question.
 4. Execute the query using the 'run_query' tool.
 5. If a query returns zero rows or incomplete coverage, iteratively adjust the SQL—loosen filters, try alternate attribute spellings, or switch to other recommended tables—before concluding no data exists.
 6. Cross reference, link, and process between multiple relevant tables to fetch and synthesize the required information

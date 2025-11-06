@@ -61,6 +61,9 @@
       "business_question": "What's new, what's emerging, what should I be paying attention to?",
       "keywords": [
         "trending",
+        "trends",
+        "styles",
+        "silhouettes",
         "top trends",
         "emerging",
         "new",
@@ -77,7 +80,7 @@
         "instagram",
         "tiktok",
         "social media",
-        "discovery",
+        "discover",
         "explore",
         "show me trends",
         "latest",
@@ -86,9 +89,9 @@
       "tables": [
         {
           "dataset": "nextwave",
-          "table": "stl_trend",
-          "priority": 3,
-          "reason": "Direct trend entities with depth, depthRank, rateOfGrowth, firstSeen, lastSeen for recency"
+          "table": "edited_options_bestsellers_data",
+          "priority": 1,
+          "reason": "Bestsellers reflect current trends with LLM-mapped attributes and trend_id linkage"
         },
         {
           "dataset": "nextwave",
@@ -104,12 +107,6 @@
         },
         {
           "dataset": "nextwave",
-          "table": "edited_options_bestsellers_data",
-          "priority": 1,
-          "reason": "Bestsellers reflect current trends with LLM-mapped attributes and trend_id linkage"
-        },
-        {
-          "dataset": "nextwave",
           "table": "bestseller_data_attributes",
           "priority": 1,
           "reason": "Captures trending attributes through bestselling product analysis"
@@ -119,6 +116,12 @@
           "table": "stl_media",
           "priority": 2,
           "reason": "Primary trend visuals with imageUrl and gcs_image_urls fields for attribute-aligned imagery"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "stl_trend",
+          "priority": 3,
+          "reason": "Direct trend entities with depth, depthRank, rateOfGrowth, firstSeen, lastSeen for recency"
         },
         {
           "dataset": "nextwave",

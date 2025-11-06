@@ -270,6 +270,7 @@ bigquery-chat-app/
 - Check that your `.env` file has the correct values
 - Ensure your GCP project ID is correct
 - Verify you're authenticated: `gcloud auth application-default login`
+- Add quota project to to ADC: 'gcloud auth application-default set-quota-project fynd-jio-impetus-non-prod'
 
 ### "Authentication failed" error
 - Run `gcloud auth application-default login` to authenticate
