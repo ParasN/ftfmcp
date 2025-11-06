@@ -5,13 +5,15 @@
   "private": true,
   "workspaces": [
     "backend",
-    "frontend"
+    "frontend",
+    "mcp-server"
   ],
   "scripts": {
-    "install:all": "npm install && npm install --workspace=backend && npm install --workspace=frontend",
-    "dev": "concurrently \"npm run dev --workspace=backend\" \"npm run dev --workspace=frontend\"",
+    "install:all": "npm install && npm install --workspace=backend && npm install --workspace=frontend && npm install --workspace=mcp-server",
+    "dev": "concurrently \"npm run dev --workspace=backend\" \"npm run dev --workspace=frontend\" \"npm run dev --workspace=mcp-server\"",
     "dev:backend": "npm run dev --workspace=backend",
     "dev:frontend": "npm run dev --workspace=frontend",
+    "dev:mcp": "npm run dev --workspace=mcp-server",
     "build": "npm run build --workspace=frontend",
     "start": "npm run start --workspace=backend"
   },

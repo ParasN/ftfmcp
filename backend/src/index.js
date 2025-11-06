@@ -4,8 +4,7 @@ import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { mkdirSync } from 'node:fs';
-import { initializeBigQuery } from './bigquery.js';
-import { AgenticOrchestrator } from './agent.js';
+import { Agent } from './agent.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -13,12 +12,12 @@ const __dirname = dirname(__filename);
 dotenv.config({ path: join(__dirname, '../../.env') });
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const port = process.env.PORT || 3001;
 
+const agent = new Agent();
 
-app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173'
-}));
+app.use(express.json());
+app.use(express.static('public'));
 app.use(express.json());
 
 const moodboardDir = join(__dirname, '../generated/moodboards');
@@ -42,11 +41,8 @@ async function initializeServices() {
 
     console.log('🔐 Using Google Cloud Application Default Credentials');
     console.log('   Make sure you have authenticated with: gcloud auth application-default login');
-    
-    initializeBigQuery(projectId);
-    console.log('✓ BigQuery client initialized');
 
-    orchestrator = new AgenticOrchestrator(geminiApiKey);
+    orchestrator = new Agent(geminiApiKey);
     console.log('✓ Agentic orchestrator initialized');
 
     return true;
@@ -149,8 +145,8 @@ async function startServer() {
   try {
     await initializeServices();
 
-    app.listen(PORT, () => {
-      console.log(`\n🚀 BigQuery Chat Server running on http://localhost:${PORT}`);
+    app.listen(port, () => {
+      console.log(`\n🚀 BigQuery Chat Server running on http://localhost:${port}`);
       console.log(`📊 Project ID: ${process.env.GCP_PROJECT_ID}`);
       console.log(`🤖 Agentic orchestration: Enabled`);
       console.log(`\nAPI Endpoints:`);

@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import path from 'node:path';
-import { listDatasets, listTables, getTableSchema, runQuery, forecast } from './bigquery.js';
+import axios from 'axios';
 import { getQueryRoutingSuggestion } from './queryRouter.js';
 import { buildResponseFormatHint, validateResponseAgainstTemplate, getResponseSchema } from './responseSchema.js';
 import { MoodboardGenerator } from './moodboardGenerator.js';
@@ -12,11 +12,12 @@ const __dirname = path.dirname(__filename);
 
 const MOODBOARD_TRIGGER_KEYWORD = 'MOODBOARD_RA';
 const RA_INPUT_PATH = path.resolve(__dirname, '../config/mock_ra_input.json');
+const MCP_SERVER_URL = 'http://localhost:3002';
 
 const tools = [
   {
-    name: 'list_datasets',
-    description: 'Lists all available BigQuery datasets in the project. Use this to discover what datasets are available.',
+    name: 'get_available_tables',
+    description: 'Lists all available tables that can be queried. Use this to discover what data is available.',
     parameters: {
       type: 'object',
       properties: {},
@@ -24,35 +25,21 @@ const tools = [
     }
   },
   {
-    name: 'list_tables',
-    description: 'Lists all tables in a specific BigQuery dataset. Use this to see what tables are available in a dataset.',
+    name: 'get_schema_for_table',
+    description: 'Gets the schema for a specific table. Use this to understand the structure of a table before querying it.',
     parameters: {
       type: 'object',
       properties: {
-        datasetId: {
+        dataset: {
           type: 'string',
-          description: 'The ID of the dataset to list tables from'
-        }
-      },
-      required: ['datasetId']
-    }
-  },
-  {
-    name: 'get_table_schema',
-    description: 'Gets the schema and metadata for a specific table. Use this to understand the structure of a table before querying it.',
-    parameters: {
-      type: 'object',
-      properties: {
-        datasetId: {
-          type: 'string',
-          description: 'The ID of the dataset containing the table'
+          description: 'The dataset of the table'
         },
-        tableId: {
+        table: {
           type: 'string',
-          description: 'The ID of the table to get schema for'
+          description: 'The name of the table'
         }
       },
-      required: ['datasetId', 'tableId']
+      required: ['dataset', 'table']
     }
   },
   {
@@ -64,10 +51,6 @@ const tools = [
         sqlQuery: {
           type: 'string',
           description: 'The SQL query to execute'
-        },
-        maxResults: {
-          type: 'number',
-          description: 'Maximum number of results to return (default: 100)'
         }
       },
       required: ['sqlQuery']
@@ -251,53 +234,20 @@ function buildNoResultGuidance(sqlQuery, routingSuggestion) {
   }
 
   if (guidance.recommendedActions.length === 0) {
-    guidance.recommendedActions.push(
-      'Inspect the schema and adjust the query to broaden the search scope.'
-    );
+    guidance.message = 'Query returned no results. Consider rephrasing your question or exploring the available tables with `get_available_tables`.';
   }
 
   return guidance;
 }
 
-export class AgenticOrchestrator {
+// Agent orchestrates Gemini conversations and MCP tool usage.
+export class Agent {
   constructor(apiKey) {
-    this.genAI = new GoogleGenerativeAI(apiKey);
     this.conversationHistory = [];
     this.routingHistory = [];
+    this.genAI = new GoogleGenerativeAI(apiKey || process.env.GEMINI_API_KEY);
     this.moodboardGenerator = new MoodboardGenerator();
     this.pendingMoodboard = null;
-  }
-
-  async executeToolCall(toolName, args, routingSuggestion) {
-    switch (toolName) {
-      case 'list_datasets':
-        return await listDatasets();
-      case 'list_tables':
-        return await listTables(args.datasetId);
-      case 'get_table_schema':
-        return await getTableSchema(args.datasetId, args.tableId);
-      case 'run_query': {
-        const result = await runQuery(args.sqlQuery, args.maxResults || 100);
-        if (!result || result.totalRows > 0) {
-          return result;
-        }
-
-        return {
-          ...result,
-          retryGuidance: buildNoResultGuidance(args.sqlQuery, routingSuggestion)
-        };
-      }
-      case 'forecast':
-        return await forecast(
-          args.datasetId,
-          args.tableId,
-          args.dateColumn,
-          args.valueColumn,
-          args.horizonDays || 30
-        );
-      default:
-        throw new Error(`Unknown tool: ${toolName}`);
-    }
   }
 
   parseJsonBlock(text) {
@@ -457,6 +407,7 @@ export class AgenticOrchestrator {
 
     return lines.join('\n');
   }
+
   parseTrendMatrix(markdownText) {
     const rows = [];
     if (!markdownText) {
@@ -518,6 +469,29 @@ export class AgenticOrchestrator {
     }
 
     return rows;
+  }
+
+  async executeToolCall(toolName, args = {}) {
+    switch (toolName) {
+      case 'get_available_tables': {
+        const response = await axios.get(`${MCP_SERVER_URL}/tables`);
+        return response.data;
+      }
+      case 'get_schema_for_table': {
+        const response = await axios.get(`${MCP_SERVER_URL}/tables/${args.dataset}/${args.table}/schema`);
+        return response.data;
+      }
+      case 'run_query': {
+        const response = await axios.post(`${MCP_SERVER_URL}/query`, { query: args.sqlQuery });
+        return response.data;
+      }
+      case 'forecast': {
+        const response = await axios.post(`${MCP_SERVER_URL}/forecast`, args);
+        return response.data;
+      }
+      default:
+        throw new Error(`Unknown tool: ${toolName}`);
+    }
   }
 
   async prepareMoodboardContext(userMessage) {
@@ -646,17 +620,15 @@ export class AgenticOrchestrator {
       systemInstruction: `You are a helpful assistant that helps users explore and query their Google BigQuery data.
 
 When a user asks a question:
-1. First, understand what data they're asking about
-2. Use list_datasets to see available datasets if needed
-3. Use list_tables to see tables in relevant datasets
-4. Use get_table_schema to understand table structure before querying
-5. Smartly create the accurate query that retrieves the required data
-6. Use run_query to execute SQL queries and get answers
-7. If a query returns zero rows or incomplete coverage, iteratively adjust the SQL—loosen filters, try alternate attribute spellings, or switch to other recommended tables—before concluding no data exists.
-8. Cross reference, link, and process between multiple relevant tables to fetch and synthesize the required information
-9. Present results in a clear, conversational way
+1. First, use 'get_available_tables' to see what data is available.
+2. Next, use 'get_schema_for_table' on the most relevant table(s) to understand their structure.
+3. Then, construct an accurate SQL query to answer the user's question.
+4. Execute the query using the 'run_query' tool.
+5. If a query returns zero rows or incomplete coverage, iteratively adjust the SQL—loosen filters, try alternate attribute spellings, or switch to other recommended tables—before concluding no data exists.
+6. Cross reference, link, and process between multiple relevant tables to fetch and synthesize the required information
+7. Present results in a clear, conversational way
 
-Always explain what you're doing and why. If you need to run multiple queries or explore the schema, explain your reasoning.
+Always explain what you're doing and why.
 
 RESPONSE FORMAT RULES:
 1. Always respond in Markdown using the exact template provided in the [RESPONSE_FORMAT] hint.
