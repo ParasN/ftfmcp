@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { mkdirSync } from 'node:fs';
 import { Agent } from './agent.js';
+import { WebSocketServer } from 'ws';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -14,11 +15,9 @@ dotenv.config({ path: join(__dirname, '../../.env') });
 const app = express();
 const port = process.env.PORT || 3001;
 
-const agent = new Agent();
-
 app.use(express.json());
+app.use(cors());
 app.use(express.static('public'));
-app.use(express.json());
 
 const moodboardDir = join(__dirname, '../generated/moodboards');
 mkdirSync(moodboardDir, { recursive: true });
@@ -145,7 +144,7 @@ async function startServer() {
   try {
     await initializeServices();
 
-    app.listen(port, () => {
+    const server = app.listen(port, () => {
       console.log(`\n🚀 BigQuery Chat Server running on http://localhost:${port}`);
       console.log(`📊 Project ID: ${process.env.GCP_PROJECT_ID}`);
       console.log(`🤖 Agentic orchestration: Enabled`);
@@ -154,6 +153,36 @@ async function startServer() {
       console.log(`  POST /api/chat     - Send a message`);
       console.log(`  POST /api/reset    - Reset conversation`);
       console.log(`  GET  /api/history  - Get conversation history\n`);
+    });
+
+    const wss = new WebSocketServer({ server });
+
+    wss.on('connection', (ws) => {
+      console.log('Client connected');
+
+      const streamCallback = (chunk) => {
+        try {
+          ws.send(JSON.stringify(chunk));
+        } catch (err) {
+          // ignore send errors for closed sockets
+          console.warn('Failed to send chunk to client:', err.message);
+        }
+      };
+
+      const agent = new Agent(process.env.GEMINI_API_KEY, streamCallback);
+
+      ws.on('message', async (message) => {
+        try {
+          const response = await agent.chat(message.toString());
+          ws.send(JSON.stringify({ final_response: response }));
+        } catch (err) {
+          ws.send(JSON.stringify({ error: err.message }));
+        }
+      });
+
+      ws.on('close', () => {
+        console.log('Client disconnected');
+      });
     });
   } catch (error) {
     console.error('Failed to start server:', error);

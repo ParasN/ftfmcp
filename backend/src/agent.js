@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI, GoogleGenerativeAIFetchError } from '@google/generative-ai';
 import path from 'node:path';
 import axios from 'axios';
 import { getQueryRoutingSuggestion } from './queryRouter.js';
@@ -13,6 +13,7 @@ const __dirname = path.dirname(__filename);
 const MOODBOARD_TRIGGER_KEYWORD = 'MOODBOARD_RA';
 const RA_INPUT_PATH = path.resolve(__dirname, '../config/mock_ra_input.json');
 const MCP_SERVER_URL = 'http://localhost:3002';
+const RATE_LIMIT_DELAY_MS = 60000;
 
 const tools = [
   {
@@ -242,12 +243,15 @@ function buildNoResultGuidance(sqlQuery, routingSuggestion) {
 
 // Agent orchestrates Gemini conversations and MCP tool usage.
 export class Agent {
-  constructor(apiKey) {
+  constructor(apiKey, streamCallback = null) {
     this.conversationHistory = [];
     this.routingHistory = [];
     this.genAI = new GoogleGenerativeAI(apiKey || process.env.GEMINI_API_KEY);
     this.moodboardGenerator = new MoodboardGenerator();
     this.pendingMoodboard = null;
+    this.streamCallback = streamCallback;
+    // Convenience flag indicating whether streaming is enabled.
+    this.isStreaming = !!this.streamCallback;
 
     const initialPrompt = `You are a BigQuery specialist and a data analyst.
 Your goal is to help users answer questions by writing and executing SQL queries against a BigQuery database.
@@ -268,6 +272,136 @@ Always strive to return a final answer to the user, even if it takes several ste
       tools: { functionDeclarations: tools },
       systemInstruction: initialPrompt,
     });
+  }
+
+  delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  isRateLimitError(error) {
+    if (!error) {
+      return false;
+    }
+
+    if (error instanceof GoogleGenerativeAIFetchError && Number(error.status) === 429) {
+      return true;
+    }
+
+    const status = Number(error.status ?? error.response?.status);
+    if (!Number.isNaN(status) && status === 429) {
+      return true;
+    }
+
+    const statusText = (error.statusText ?? error.response?.statusText ?? '').toLowerCase();
+    if (statusText.includes('too many requests')) {
+      return true;
+    }
+
+    const message = (error.message || '').toLowerCase();
+    return message.includes('429') ||
+      message.includes('quota exceeded') ||
+      message.includes('rate limit') ||
+      message.includes('too many requests');
+  }
+
+  parseRetryDelayValue(value) {
+    if (value === null || value === undefined) {
+      return null;
+    }
+
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value > 600 ? value : value * 1000;
+    }
+
+    if (typeof value === 'string') {
+      const match = value.match(/([0-9.]+)/);
+      if (match) {
+        const seconds = parseFloat(match[1]);
+        if (!Number.isNaN(seconds)) {
+          return seconds * 1000;
+        }
+      }
+      return null;
+    }
+
+    if (typeof value === 'object') {
+      if (value.retryDelay) {
+        return this.parseRetryDelayValue(value.retryDelay);
+      }
+
+      const seconds = value.seconds ?? value.Seconds;
+      if (seconds !== undefined) {
+        const secondsNum = Number(seconds);
+        const nanos = Number(value.nanos ?? value.Nanos ?? 0);
+        if (!Number.isNaN(secondsNum)) {
+          const msFromSeconds = secondsNum * 1000;
+          const msFromNanos = Number.isNaN(nanos) ? 0 : Math.floor(nanos / 1e6);
+          return msFromSeconds + msFromNanos;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  getRateLimitDelayMs(error) {
+    const detailSources = [
+      Array.isArray(error?.errorDetails) ? error.errorDetails : null,
+      Array.isArray(error?.response?.errorDetails) ? error.response.errorDetails : null,
+      Array.isArray(error?.response?.error?.details) ? error.response.error.details : null
+    ].filter(Boolean);
+
+    for (const details of detailSources) {
+      for (const detail of details) {
+        const parsed = this.parseRetryDelayValue(detail?.retryDelay ?? detail);
+        if (parsed) {
+          return Math.max(parsed, RATE_LIMIT_DELAY_MS);
+        }
+      }
+    }
+
+    const message = typeof error?.message === 'string' ? error.message : '';
+    const messageMatch = message.match(/retry(?:\s(?:in|after))?\s([0-9.]+)s/i) ||
+      message.match(/retryDelay[^0-9]*([0-9.]+)s/i);
+
+    if (messageMatch) {
+      const seconds = parseFloat(messageMatch[1]);
+      if (!Number.isNaN(seconds)) {
+        return Math.max(seconds * 1000, RATE_LIMIT_DELAY_MS);
+      }
+    }
+
+    return RATE_LIMIT_DELAY_MS;
+  }
+
+  async runWithRateLimitRetry(action, context = 'Gemini request') {
+    // Keep retrying indefinitely until quota is available again.
+    for (;;) {
+      try {
+        return await action();
+      } catch (error) {
+        if (!this.isRateLimitError(error)) {
+          throw error;
+        }
+
+        const delayMs = this.getRateLimitDelayMs(error);
+        const delaySeconds = (delayMs / 1000).toFixed(1);
+        console.warn(`[Agent] Gemini rate limit hit during ${context}. Retrying in ${delaySeconds}s.`);
+
+        // Send rate limit notification to frontend
+        if (this.streamCallback) {
+          this.streamCallback({
+            type: 'rate_limit',
+            payload: {
+              retryIn: parseFloat(delaySeconds),
+              message: `Rate limit hit. Retrying in ${delaySeconds}s...`
+            }
+          });
+        }
+
+        await this.delay(delayMs);
+      }
+    }
   }
 
   parseJsonBlock(text) {
@@ -491,6 +625,29 @@ Always strive to return a final answer to the user, even if it takes several ste
     return rows;
   }
 
+  aggregateParts(existingParts, newParts) {
+    for (const newPart of newParts) {
+      if (newPart.functionCall) {
+        const existing = existingParts.find(p => p.functionCall && p.functionCall.name === newPart.functionCall.name);
+        if (existing) {
+          // This is a simplified aggregation. A more robust implementation might be needed
+          // depending on how the API streams function call arguments.
+          Object.assign(existing.functionCall.args, newPart.functionCall.args);
+        } else {
+          existingParts.push(newPart);
+        }
+      } else if (newPart.text) {
+        const existingText = existingParts.find(p => p.text);
+        if (existingText) {
+          existingText.text += newPart.text;
+        } else {
+          existingParts.push(newPart);
+        }
+      }
+    }
+    return existingParts;
+  }
+
   async executeToolCall(toolName, args = {}) {
     switch (toolName) {
       case 'get_available_tables': {
@@ -675,7 +832,50 @@ RESPONSE FORMAT RULES:
     let validationResult = { valid: true, missingSections: [] };
 
     while (attempt <= MAX_FORMAT_RETRIES) {
-      let response = await chat.sendMessage(pendingMessage);
+      const streamResult = await this.runWithRateLimitRetry(
+        () => chat.sendMessageStream(pendingMessage),
+        'streaming Gemini response'
+      );
+      const iterator = streamResult?.stream ?? streamResult;
+      if (!iterator || typeof iterator[Symbol.asyncIterator] !== 'function') {
+        throw new Error('Gemini streaming interface did not provide an async iterator.');
+      }
+
+      let response = null;
+      let streamedParts = [];
+
+      for await (const chunk of iterator) {
+        if (this.streamCallback) {
+          this.streamCallback(chunk);
+        }
+
+        const parts = chunk?.candidates?.[0]?.content?.parts ?? [];
+        streamedParts = this.aggregateParts(streamedParts, parts);
+      }
+
+      const resolved = await streamResult.response;
+      response = resolved?.response ? resolved : { response: resolved };
+
+      const candidate = response.response?.candidates?.[0] ?? null;
+      const finalParts = streamedParts.length > 0
+        ? streamedParts
+        : (candidate?.content?.parts ?? []);
+
+      if (candidate) {
+        candidate.content = candidate.content || {};
+        candidate.content.parts = finalParts;
+      } else {
+        response.response = response.response || {};
+        response.response.candidates = [
+          {
+            content: {
+              parts: finalParts
+            }
+          }
+        ];
+      }
+
+
       const iterationToolCalls = [];
 
       while (response.response.candidates[0].content.parts.some(part => part.functionCall)) {
@@ -728,7 +928,10 @@ RESPONSE FORMAT RULES:
         });
 
 
-        response = await chat.sendMessage(functionResponses);
+        response = await this.runWithRateLimitRetry(
+          () => chat.sendMessage(functionResponses),
+          'sending Gemini tool response payload'
+        );
       }
 
       finalText = response.response.text();

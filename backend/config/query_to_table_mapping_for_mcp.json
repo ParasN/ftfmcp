@@ -121,7 +121,7 @@
           "dataset": "nextwave",
           "table": "stl_trend",
           "priority": 3,
-          "reason": "Direct trend entities with depth, depthRank, rateOfGrowth, firstSeen, lastSeen for recency"
+          "reason": "Trend entities with depth, depthRank, rateOfGrowth, firstSeen, lastSeen for recency"
         },
         {
           "dataset": "nextwave",
