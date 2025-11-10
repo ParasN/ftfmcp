@@ -241,6 +241,13 @@ function buildNoResultGuidance(sqlQuery, routingSuggestion) {
   return guidance;
 }
 
+function cloneHistoryEntries(history) {
+  if (!Array.isArray(history)) {
+    return [];
+  }
+  return JSON.parse(JSON.stringify(history));
+}
+
 // Agent orchestrates Gemini conversations and MCP tool usage.
 export class Agent {
   constructor(apiKey, streamCallback = null) {
@@ -1017,6 +1024,14 @@ RESPONSE FORMAT RULES:
       attachments,
       payload
     };
+  }
+
+  loadConversationHistory(history) {
+    this.conversationHistory = cloneHistoryEntries(history);
+  }
+
+  getConversationHistorySnapshot() {
+    return cloneHistoryEntries(this.conversationHistory);
   }
 
   resetConversation() {

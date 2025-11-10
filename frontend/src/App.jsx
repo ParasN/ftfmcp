@@ -115,19 +115,49 @@ const extractModelReasoning = (message) => {
   return collected;
 };
 
+const extractLatestMoodboardFromMessages = (messageList) => {
+  if (!Array.isArray(messageList)) {
+    return null;
+  }
+
+  for (let idx = messageList.length - 1; idx >= 0; idx -= 1) {
+    const entry = messageList[idx];
+    if (entry?.payload?.moodboard) {
+      return {
+        ...entry.payload.moodboard,
+        ra: entry.payload.ra,
+        brandDNA: entry.payload.brandDNA,
+        pdfPath: entry.attachments?.[0]?.path || null
+      };
+    }
+  }
+
+  return null;
+};
+
 function App() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [raInput, setRaInput] = useState(SAMPLE_RA_JSON);
-  const [loading, setLoading] = useState(false);
   const [connected, setConnected] = useState(false);
   const [latestMoodboard, setLatestMoodboard] = useState(null);
   const [activeTab, setActiveTab] = useState('chat');
   const [debugStream, setDebugStream] = useState([]);
   const [isStreamVisible, setIsStreamVisible] = useState(true);
   const [rateLimitInfo, setRateLimitInfo] = useState(null);
+  const [conversations, setConversations] = useState([]);
+  const [conversationsLoading, setConversationsLoading] = useState(true);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [activeConversationId, setActiveConversationId] = useState(null);
+  const [loadingConversationId, setLoadingConversationId] = useState(null);
   const messagesEndRef = useRef(null);
   const ws = useRef(null);
+  const activeConversationRef = useRef(null);
+
+  const activeConversation = conversations.find(convo => convo.id === activeConversationId) || null;
+  const isActiveConversationLoading = Boolean(
+    loadingConversationId && loadingConversationId === activeConversationId
+  );
 
   const handleImageError = useCallback((event) => {
     if (event?.currentTarget) {
@@ -150,6 +180,14 @@ function App() {
   }, [messages]);
 
   useEffect(() => {
+    activeConversationRef.current = activeConversationId;
+  }, [activeConversationId]);
+
+  useEffect(() => {
+    setDebugStream([]);
+  }, [activeConversationId]);
+
+  useEffect(() => {
     checkHealth();
 
     const socket = new WebSocket('ws://localhost:3001');
@@ -168,40 +206,59 @@ function App() {
     socket.onmessage = (event) => {
       try {
         const message = JSON.parse(event.data);
+        const messageConversationId = message?.conversationId || null;
+        const isForActiveConversation = !messageConversationId || messageConversationId === activeConversationRef.current;
 
         if (message.error) {
-          setDebugStream(prev => [...prev, createDebugEntry('error', message)]);
+          if (isForActiveConversation) {
+            setDebugStream(prev => [...prev, createDebugEntry('error', message)]);
 
-          setMessages(prev => {
-            const next = [...prev];
-            const last = next[next.length - 1];
-            const errorEntry = {
-              role: 'error',
-              content: message.error,
-              timestamp: new Date().toISOString()
-            };
-            if (last?.role === 'assistant') {
-              next[next.length - 1] = errorEntry;
-            } else {
-              next.push(errorEntry);
-            }
-            return next;
-          });
+            setMessages(prev => {
+              if (!prev.length) {
+                return prev;
+              }
 
-          setLoading(false);
+              const next = [...prev];
+              const last = next[next.length - 1];
+              const errorEntry = {
+                role: 'error',
+                content: message.error,
+                timestamp: new Date().toISOString()
+              };
+              if (last?.role === 'assistant') {
+                next[next.length - 1] = errorEntry;
+              } else {
+                next.push(errorEntry);
+              }
+              return next;
+            });
+          }
+
+          if (messageConversationId) {
+            setLoadingConversationId(prev => (prev === messageConversationId ? null : prev));
+          }
           return;
         }
 
         if (message.type === 'rate_limit') {
-          setRateLimitInfo({
-            retryIn: message.payload?.retryIn,
-            message: message.payload?.message,
-            startTime: Date.now()
-          });
+          if (isForActiveConversation) {
+            setRateLimitInfo({
+              retryIn: message.payload?.retryIn,
+              message: message.payload?.message,
+              startTime: Date.now()
+            });
+          }
           return;
         }
 
         if (message.final_response) {
+          if (!isForActiveConversation) {
+            if (messageConversationId) {
+              setLoadingConversationId(prev => (prev === messageConversationId ? null : prev));
+            }
+            return;
+          }
+
           const finalResponse = message.final_response;
           setDebugStream(prev => [...prev, createDebugEntry('final', finalResponse)]);
 
@@ -256,7 +313,13 @@ function App() {
             setLatestMoodboard(moodboardPayload);
           }
 
-          setLoading(false);
+          if (messageConversationId) {
+            setLoadingConversationId(prev => (prev === messageConversationId ? null : prev));
+          }
+          return;
+        }
+
+        if (!isForActiveConversation) {
           return;
         }
 
@@ -289,6 +352,10 @@ function App() {
         if (textContent) {
           setMessages(prev => {
             if (!prev.length) {
+              return prev;
+            }
+
+            if (messageConversationId && messageConversationId !== activeConversationRef.current) {
               return prev;
             }
 
@@ -327,6 +394,92 @@ function App() {
     }
   };
 
+  const fetchConversations = useCallback(async (preferredId = null) => {
+    setConversationsLoading(true);
+    try {
+      const response = await fetch('/api/conversations');
+      if (!response.ok) {
+        throw new Error(`Failed to fetch conversations: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      if (!data.success) {
+        throw new Error('Conversation list response did not include success flag.');
+      }
+
+      setConversations(data.conversations || []);
+
+      const conversationsList = data.conversations || [];
+      const preferredExists = preferredId
+        ? conversationsList.some(convo => convo.id === preferredId)
+        : false;
+      const currentExists = activeConversationRef.current
+        ? conversationsList.some(convo => convo.id === activeConversationRef.current)
+        : false;
+
+      if (preferredExists) {
+        setActiveConversationId(preferredId);
+      } else if (!currentExists) {
+        setActiveConversationId(data.defaultConversationId || conversationsList[0]?.id || null);
+      }
+    } catch (error) {
+      console.error('Failed to fetch conversations:', error);
+    } finally {
+      setConversationsLoading(false);
+    }
+  }, []);
+
+  const loadConversation = useCallback(async (conversationId) => {
+    if (!conversationId) {
+      setMessages([]);
+      setLatestMoodboard(null);
+      return;
+    }
+
+    setMessagesLoading(true);
+    try {
+      const response = await fetch(`/api/conversations/${conversationId}`);
+      if (response.status === 404) {
+        await fetchConversations();
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(`Failed to load conversation: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      if (!data.success) {
+        throw new Error('Conversation response did not include success flag.');
+      }
+
+      if (activeConversationRef.current !== conversationId) {
+        return;
+      }
+
+      const conversationMessages = data.conversation?.messages || [];
+      setMessages(conversationMessages);
+      setLatestMoodboard(extractLatestMoodboardFromMessages(conversationMessages));
+    } catch (error) {
+      console.error('Failed to load conversation:', error);
+    } finally {
+      setMessagesLoading(false);
+    }
+  }, [fetchConversations]);
+
+  useEffect(() => {
+    fetchConversations();
+  }, [fetchConversations]);
+
+  useEffect(() => {
+    if (!activeConversationId) {
+      setMessages([]);
+      setLatestMoodboard(null);
+      return;
+    }
+    loadConversation(activeConversationId);
+  }, [activeConversationId, loadConversation]);
+
   useEffect(() => {
     if (!rateLimitInfo) return;
 
@@ -349,10 +502,23 @@ function App() {
   }, [rateLimitInfo?.startTime]);
 
   const sendChatMessage = useCallback(async (messageText) => {
-    if (!messageText || loading) return;
+    if (!messageText) {
+      return;
+    }
+
+    const conversationId = activeConversationId;
+    if (!conversationId) {
+      return;
+    }
+
+    if (loadingConversationId && loadingConversationId === conversationId) {
+      return;
+    }
 
     const trimmedMessage = messageText.trim();
-    if (!trimmedMessage) return;
+    if (!trimmedMessage) {
+      return;
+    }
 
     const userEntry = {
       role: 'user',
@@ -361,14 +527,19 @@ function App() {
     };
 
     const websocketReady = ws.current && ws.current.readyState === WebSocket.OPEN;
+    const requestPayload = { message: trimmedMessage, conversationId };
 
     if (websocketReady) {
-      setDebugStream([createDebugEntry('request', { message: trimmedMessage })]);
+      setDebugStream([createDebugEntry('request', { message: trimmedMessage, conversationId })]);
     } else {
-      setDebugStream([createDebugEntry('http-request', { message: trimmedMessage })]);
+      setDebugStream([createDebugEntry('http-request', { message: trimmedMessage, conversationId })]);
     }
 
     setMessages(prev => {
+      if (activeConversationRef.current !== conversationId) {
+        return prev;
+      }
+
       const next = [...prev, userEntry];
       if (websocketReady) {
         next.push({
@@ -382,13 +553,15 @@ function App() {
       return next;
     });
 
-    setLoading(true);
+    setLoadingConversationId(conversationId);
+
+    const clearLoading = () => {
+      setLoadingConversationId(prev => (prev === conversationId ? null : prev));
+    };
 
     try {
-      const payload = JSON.stringify({ message: trimmedMessage });
-
       if (websocketReady) {
-        ws.current.send(payload);
+        ws.current.send(JSON.stringify(requestPayload));
         return;
       }
 
@@ -397,7 +570,7 @@ function App() {
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ message: trimmedMessage })
+        body: JSON.stringify(requestPayload)
       });
 
       const data = await response.json();
@@ -415,6 +588,10 @@ function App() {
         };
 
         setMessages(prev => {
+          if (activeConversationRef.current !== conversationId) {
+            return prev;
+          }
+
           const next = [...prev];
           const last = next[next.length - 1];
           if (last?.role === 'assistant' && last.content === '') {
@@ -425,7 +602,7 @@ function App() {
           return next;
         });
 
-        if (data.payload?.moodboard) {
+        if (data.payload?.moodboard && activeConversationRef.current === conversationId) {
           setLatestMoodboard({
             ...data.payload.moodboard,
             ra: data.payload.ra,
@@ -437,6 +614,10 @@ function App() {
         setDebugStream(prev => [...prev, createDebugEntry('http-error', data)]);
 
         setMessages(prev => {
+          if (activeConversationRef.current !== conversationId) {
+            return prev;
+          }
+
           const next = [...prev];
           const last = next[next.length - 1];
           const errorEntry = {
@@ -453,11 +634,15 @@ function App() {
         });
       }
 
-      setLoading(false);
+      clearLoading();
     } catch (error) {
       setDebugStream(prev => [...prev, createDebugEntry('transport-error', { message: error.message })]);
 
       setMessages(prev => {
+        if (activeConversationRef.current !== conversationId) {
+          return prev;
+        }
+
         const next = [...prev];
         const last = next[next.length - 1];
         const errorEntry = {
@@ -472,13 +657,13 @@ function App() {
         next.push(errorEntry);
         return next;
       });
-      setLoading(false);
+      clearLoading();
     }
-  }, [loading]);
+  }, [activeConversationId, loadingConversationId]);
 
   const sendMessage = async (e) => {
     e.preventDefault();
-    if (loading) return;
+    if (isActiveConversationLoading) return;
     const userMessage = input.trim();
     if (!userMessage) return;
     setInput('');
@@ -486,7 +671,7 @@ function App() {
   };
 
   const handleGenerateMoodboard = async () => {
-    if (loading) return;
+    if (isActiveConversationLoading) return;
     const payload = `${MOODBOARD_TRIGGER}\n${raInput}`;
     await sendChatMessage(payload);
   };
@@ -495,17 +680,127 @@ function App() {
     setRaInput(SAMPLE_RA_JSON);
   };
 
-  const resetConversation = async () => {
+  const resetConversation = useCallback(async () => {
+    if (!activeConversationId) {
+      return;
+    }
+
     try {
-      await fetch('/api/reset', { method: 'POST' });
-      setMessages([]);
-      setLatestMoodboard(null);
-      setRaInput(SAMPLE_RA_JSON);
-      setDebugStream([]);
+      const response = await fetch(`/api/conversations/${activeConversationId}/reset`, {
+        method: 'POST'
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        throw new Error(errorBody.error || 'Failed to reset conversation');
+      }
+
+      if (activeConversationRef.current === activeConversationId) {
+        setMessages([]);
+        setLatestMoodboard(null);
+        setRaInput(SAMPLE_RA_JSON);
+        setDebugStream([]);
+      }
     } catch (error) {
       console.error('Failed to reset conversation:', error);
     }
-  };
+  }, [activeConversationId]);
+
+  const handleCreateConversation = useCallback(async () => {
+    try {
+      const response = await fetch('/api/conversations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to create conversation');
+      }
+
+      await fetchConversations(data.conversation.id);
+      setMessages([]);
+      setLatestMoodboard(null);
+      setDebugStream([]);
+    } catch (error) {
+      console.error('Failed to create conversation:', error);
+    }
+  }, [fetchConversations]);
+
+  const handleSelectConversation = useCallback((conversationId) => {
+    if (!conversationId || conversationId === activeConversationId) {
+      return;
+    }
+    setActiveConversationId(conversationId);
+  }, [activeConversationId]);
+
+  const handleDeleteConversation = useCallback(async () => {
+    if (!activeConversationId) {
+      return;
+    }
+    const confirmed = window.confirm('Delete this conversation? This action cannot be undone.');
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/conversations/${activeConversationId}`, {
+        method: 'DELETE'
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to delete conversation');
+      }
+
+      setConversations(data.conversations || []);
+      setActiveConversationId(data.nextConversationId || data.conversations?.[0]?.id || null);
+      setMessages([]);
+      setLatestMoodboard(null);
+      setDebugStream([]);
+    } catch (error) {
+      console.error('Failed to delete conversation:', error);
+    }
+  }, [activeConversationId]);
+
+  const handleRenameConversation = useCallback(async () => {
+    if (!activeConversation) {
+      return;
+    }
+
+    const proposedTitle = window.prompt('Rename conversation', activeConversation.title);
+    if (!proposedTitle) {
+      return;
+    }
+
+    const normalizedTitle = proposedTitle.trim();
+    if (!normalizedTitle || normalizedTitle === activeConversation.title) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/conversations/${activeConversation.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ title: normalizedTitle })
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to rename conversation');
+      }
+
+      setConversations(prev =>
+        prev.map(convo => (convo.id === data.conversation.id ? { ...convo, ...data.conversation } : convo))
+      );
+    } catch (error) {
+      console.error('Failed to rename conversation:', error);
+    }
+  }, [activeConversation]);
 
   const streamEntries = [...debugStream].reverse();
   const streamPanel = !isStreamVisible ? null : (
@@ -631,10 +926,39 @@ function App() {
     </aside>
   );
 
+  const conversationUpdatedAt = activeConversation?.updatedAt
+    ? new Date(activeConversation.updatedAt).toLocaleString()
+    : null;
+
   const conversationArea = (
     <>
+      <div className="conversation-toolbar">
+        <div className="conversation-title-block">
+          <h2>{activeConversation?.title || 'Conversation'}</h2>
+          {activeConversation && conversationUpdatedAt && (
+            <span className="conversation-updated">Updated {conversationUpdatedAt}</span>
+          )}
+        </div>
+        <div className="conversation-toolbar-actions">
+          <button type="button" onClick={handleRenameConversation} disabled={!activeConversation}>
+            Rename
+          </button>
+          <button type="button" onClick={handleDeleteConversation} disabled={!activeConversation}>
+            Delete
+          </button>
+        </div>
+      </div>
+
       <div className="messages">
-        {messages.length === 0 && (
+        {conversationsLoading ? (
+          <div className="conversation-placeholder">Loading conversations…</div>
+        ) : !activeConversationId ? (
+          <div className="conversation-placeholder">
+            Create a conversation to start chatting with the assistant.
+          </div>
+        ) : messagesLoading ? (
+          <div className="conversation-placeholder">Loading conversation…</div>
+        ) : messages.length === 0 ? (
           <div className="welcome">
             <h2>Fashion Insights Assistant</h2>
             <p>Ask me anything about your fashion data. I can:</p>
@@ -646,102 +970,106 @@ function App() {
             </ul>
             <p className="example">Try: "What are the trending colors for Spring/Summer 2025?" or "Show me the most popular prints for dresses in the last 3 months."</p>
           </div>
-        )}
-
-        {messages.map((msg, idx) => (
-          <div key={idx} className={`message ${msg.role}`}>
-            <div className="message-header">
-              <span className="role">{msg.role === 'user' ? 'You' : msg.role === 'assistant' ? 'Assistant' : 'Error'}</span>
-              <span className="timestamp">{new Date(msg.timestamp).toLocaleTimeString()}</span>
-            </div>
-            <div className="message-content">
-              {msg.role === 'assistant' ? (
-                <ReactMarkdown
-                  className="markdown-body"
-                  remarkPlugins={[remarkGfm]}
-                  components={{
-                    table: ({ children, ...props }) => (
-                      <div className="markdown-table-wrapper">
-                        <table {...props}>{children}</table>
-                      </div>
-                    ),
-                    code: ({ inline, className, children, ...props }) => {
-                      const content = String(children).replace(/\n$/, '');
-                      if (inline) {
-                        return (
-                          <code
-                            className={['markdown-inline-code', className].filter(Boolean).join(' ')}
-                            {...props}
-                          >
-                            {content}
-                          </code>
-                        );
-                      }
-                      return (
-                        <pre className={['markdown-code-block', className].filter(Boolean).join(' ')}>
-                          <code {...props}>{content}</code>
-                        </pre>
-                      );
-                    }
-                  }}
-                >
-                  {msg.content || ''}
-                </ReactMarkdown>
-              ) : (
-                msg.content
-              )}
-            </div>
-            {msg.attachments && msg.attachments.length > 0 && (
-              <div className="attachments">
-                <div className="attachments-title">Attachments</div>
-                {msg.attachments.map((attachment, attachmentIdx) => (
-                  <a
-                    key={attachmentIdx}
-                    className="attachment-link"
-                    href={attachment.path}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    {attachment.type === 'application/pdf' ? 'Moodboard PDF' : attachment.type}
-                  </a>
-                ))}
-              </div>
-            )}
-            {msg.toolCalls && msg.toolCalls.length > 0 && (
-              <div className="tool-calls">
-                <div className="tool-calls-header">Tool Calls:</div>
-                {msg.toolCalls.map((call, callIdx) => (
-                  <div key={callIdx} className="tool-call">
-                    <div className="tool-name">
-                      <strong>{call.name}</strong>
-                    </div>
-                    {Object.keys(call.args).length > 0 && (
-                      <div className="tool-args">
-                        <strong>Arguments:</strong>
-                        <pre>{JSON.stringify(call.args, null, 2)}</pre>
-                      </div>
-                    )}
-                    {call.result && (
-                      <div className="tool-result">
-                        <strong>Result:</strong>
-                        <pre>{JSON.stringify(call.result, null, 2)}</pre>
-                      </div>
-                    )}
-                    {call.error && (
-                      <div className="tool-error">
-                        <strong>Error:</strong> {call.error}
-                      </div>
-                    )}
+        ) : (
+          messages.map((msg, idx) => {
+            const messageKey = msg.id || `${msg.timestamp || 'message'}-${idx}`;
+            return (
+              <div key={messageKey} className={`message ${msg.role}`}>
+                <div className="message-header">
+                  <span className="role">{msg.role === 'user' ? 'You' : msg.role === 'assistant' ? 'Assistant' : 'Error'}</span>
+                  <span className="timestamp">
+                    {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : 'Now'}
+                  </span>
+                </div>
+                <div className="message-content">
+                  {msg.role === 'assistant' ? (
+                    <ReactMarkdown
+                      className="markdown-body"
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        table: ({ children, ...props }) => (
+                          <div className="markdown-table-wrapper">
+                            <table {...props}>{children}</table>
+                          </div>
+                        ),
+                        code: ({ inline, className, children, ...props }) => {
+                          const content = String(children).replace(/\n$/, '');
+                          if (inline) {
+                            return (
+                              <code
+                                className={['markdown-inline-code', className].filter(Boolean).join(' ')}
+                                {...props}
+                              >
+                                {content}
+                              </code>
+                            );
+                          }
+                          return (
+                            <pre className={['markdown-code-block', className].filter(Boolean).join(' ')}>
+                              <code {...props}>{content}</code>
+                            </pre>
+                          );
+                        }
+                      }}
+                    >
+                      {msg.content || ''}
+                    </ReactMarkdown>
+                  ) : (
+                    msg.content
+                  )}
+                </div>
+                {msg.attachments && msg.attachments.length > 0 && (
+                  <div className="attachments">
+                    <div className="attachments-title">Attachments</div>
+                    {msg.attachments.map((attachment, attachmentIdx) => (
+                      <a
+                        key={attachmentIdx}
+                        className="attachment-link"
+                        href={attachment.path}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {attachment.type === 'application/pdf' ? 'Moodboard PDF' : attachment.type}
+                      </a>
+                    ))}
                   </div>
-                ))}
+                )}
+                {msg.toolCalls && msg.toolCalls.length > 0 && (
+                  <div className="tool-calls">
+                    <div className="tool-calls-header">Tool Calls:</div>
+                    {msg.toolCalls.map((call, callIdx) => (
+                      <div key={callIdx} className="tool-call">
+                        <div className="tool-name">
+                          <strong>{call.name}</strong>
+                        </div>
+                        {Object.keys(call.args).length > 0 && (
+                          <div className="tool-args">
+                            <strong>Arguments:</strong>
+                            <pre>{JSON.stringify(call.args, null, 2)}</pre>
+                          </div>
+                        )}
+                        {call.result && (
+                          <div className="tool-result">
+                            <strong>Result:</strong>
+                            <pre>{JSON.stringify(call.result, null, 2)}</pre>
+                          </div>
+                        )}
+                        {call.error && (
+                          <div className="tool-error">
+                            <strong>Error:</strong> {call.error}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        ))}
-
+            );
+          })
+        )}
       </div>
 
-      {loading && (
+      {isActiveConversationLoading && (
         <div className="message assistant loading">
           <div className="message-header">
             <span className="role">Assistant</span>
@@ -764,12 +1092,12 @@ function App() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Ask a question about your FTF data..."
-          disabled={loading || !connected}
+          disabled={isActiveConversationLoading || !connected}
           className="message-input"
         />
         <button
           type="submit"
-          disabled={loading || !connected || !input.trim()}
+          disabled={isActiveConversationLoading || !connected || !input.trim()}
           className="send-btn"
         >
           Send
@@ -795,7 +1123,12 @@ function App() {
           >
             {isStreamVisible ? 'Hide Stream' : 'Show Stream'}
           </button>
-          <button onClick={resetConversation} className="reset-btn">
+          <button
+            onClick={resetConversation}
+            className="reset-btn"
+            disabled={!activeConversationId}
+            title={!activeConversationId ? 'Create a conversation to reset' : undefined}
+          >
             Reset Chat
           </button>
         </div>
@@ -827,6 +1160,44 @@ function App() {
         </div>
 
         <div className="chat-layout">
+          <aside className="conversation-sidebar">
+            <div className="conversation-sidebar-header">
+              <div>
+                <h2>Conversations</h2>
+                <span>{conversations.length} total</span>
+              </div>
+              <button type="button" onClick={handleCreateConversation}>
+                New Chat
+              </button>
+            </div>
+            <div className="conversation-list">
+              {conversationsLoading ? (
+                <div className="conversation-list-empty">Loading…</div>
+              ) : conversations.length === 0 ? (
+                <div className="conversation-list-empty">
+                  No conversations yet. Start a new one to begin chatting.
+                </div>
+              ) : (
+                conversations.map(convo => (
+                  <button
+                    key={convo.id}
+                    type="button"
+                    className={`conversation-list-item ${convo.id === activeConversationId ? 'active' : ''}`}
+                    onClick={() => handleSelectConversation(convo.id)}
+                    aria-current={convo.id === activeConversationId ? 'true' : undefined}
+                  >
+                    <div className="conversation-list-title">{convo.title}</div>
+                    <div className="conversation-list-preview">
+                      {convo.lastMessagePreview || 'No messages yet'}
+                    </div>
+                    <div className="conversation-list-meta">
+                      {convo.updatedAt ? new Date(convo.updatedAt).toLocaleString() : ''}
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </aside>
           <div className="primary-column">
             {activeTab === 'moodboard' ? (
               <>
@@ -846,11 +1217,11 @@ function App() {
                     <button
                       className="primary"
                       onClick={handleGenerateMoodboard}
-                      disabled={loading || !raInput.trim()}
+                      disabled={isActiveConversationLoading || !raInput.trim()}
                     >
-                      {loading ? 'Generating…' : 'Generate Moodboard'}
+                      {isActiveConversationLoading ? 'Generating…' : 'Generate Moodboard'}
                     </button>
-                    <button className="ghost" onClick={handleResetRa} disabled={loading}>
+                    <button className="ghost" onClick={handleResetRa} disabled={isActiveConversationLoading}>
                       Reset Sample
                     </button>
                   </div>
