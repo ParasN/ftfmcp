@@ -1,0 +1,9 @@
+{
+	"servers": {
+		"ftfmcp1": {
+			"url": "http://localhost:3002/",
+			"type": "http"
+		}
+	},
+	"inputs": []
+}

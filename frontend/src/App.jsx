@@ -38,6 +38,83 @@ const createDebugEntry = (type, payload) => ({
   timestamp: new Date().toISOString()
 });
 
+const extractModelReasoning = (message) => {
+  const collected = [];
+  const seen = new Set();
+
+  const addThought = (value) => {
+    if (typeof value !== 'string') {
+      return;
+    }
+    const normalized = value.trim();
+    if (!normalized || seen.has(normalized)) {
+      return;
+    }
+    seen.add(normalized);
+    collected.push(normalized);
+  };
+
+  const inspectThoughtNode = (node) => {
+    if (!node) {
+      return;
+    }
+    if (typeof node === 'string') {
+      addThought(node);
+      return;
+    }
+    if (typeof node.thought === 'string') {
+      addThought(node.thought);
+    }
+    if (typeof node.text === 'string') {
+      addThought(node.text);
+    }
+    if (Array.isArray(node.thoughts)) {
+      node.thoughts.forEach(inspectThoughtNode);
+    }
+    if (Array.isArray(node.reasoning)) {
+      node.reasoning.forEach(addThought);
+    }
+  };
+
+  const inspectParts = (parts) => {
+    if (!Array.isArray(parts)) {
+      return;
+    }
+    parts.forEach((part) => {
+      if (part?.thought && typeof part?.text === 'string') {
+        addThought(part.text);
+      }
+      if (typeof part?.metadata?.thought === 'string') {
+        addThought(part.metadata.thought);
+      }
+      if (Array.isArray(part?.thoughts)) {
+        part.thoughts.forEach(inspectThoughtNode);
+      }
+    });
+  };
+
+  const inspectCandidate = (candidate) => {
+    if (!candidate) {
+      return;
+    }
+    inspectParts(candidate?.content?.parts);
+    inspectThoughtNode(candidate?.thinking);
+    inspectThoughtNode(candidate?.metadata?.thinking);
+  };
+
+  if (Array.isArray(message?.candidates)) {
+    message.candidates.forEach(inspectCandidate);
+  }
+
+  inspectThoughtNode(message?.thinking);
+
+  if (Array.isArray(message?.modelTurn?.parts)) {
+    inspectParts(message.modelTurn.parts);
+  }
+
+  return collected;
+};
+
 function App() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -195,12 +272,16 @@ function App() {
           nonTextParts = parts.filter(part => typeof part?.text !== 'string');
         }
 
+        const reasoningParts = extractModelReasoning(message);
         const chunkEntry = { raw: message };
         if (textContent) {
           chunkEntry.text = textContent;
         }
         if (nonTextParts.length > 0) {
           chunkEntry.nonTextParts = nonTextParts;
+        }
+        if (reasoningParts.length > 0) {
+          chunkEntry.reasoning = reasoningParts;
         }
 
         setDebugStream(prev => [...prev, createDebugEntry('chunk', chunkEntry)]);
@@ -439,17 +520,112 @@ function App() {
             Streaming thoughts, tool calls, and final responses will appear here.
           </div>
         ) : (
-          streamEntries.map(entry => (
-            <div key={entry.id} className={`stream-entry stream-${entry.type.replace(/[^a-z0-9-]/gi, '').toLowerCase()}`}>
-              <div className="stream-entry-meta">
-                <span className="stream-entry-type">{entry.type}</span>
-                <span className="stream-entry-timestamp">
-                  {new Date(entry.timestamp).toLocaleTimeString()}
-                </span>
+          streamEntries.map(entry => {
+            const normalizedType = entry.type.replace(/[^a-z0-9-]/gi, '').toLowerCase();
+            const timestampLabel = new Date(entry.timestamp).toLocaleTimeString();
+
+            if (entry.type === 'chunk') {
+              const reasoning = Array.isArray(entry.payload?.reasoning) ? entry.payload.reasoning : [];
+              const nonTextParts = Array.isArray(entry.payload?.nonTextParts) ? entry.payload.nonTextParts : [];
+
+              return (
+                <div key={entry.id} className={`stream-entry stream-${normalizedType}`}>
+                  <div className="stream-entry-meta">
+                    <span className="stream-entry-type">{entry.type}</span>
+                    <span className="stream-entry-timestamp">{timestampLabel}</span>
+                  </div>
+
+                  {reasoning.length > 0 ? (
+                    <div className="stream-section">
+                      <div className="stream-section-title">Model Reasoning</div>
+                      <ol className="stream-reasoning-list">
+                        {reasoning.map((thought, idx) => (
+                          <li key={`${entry.id}-thought-${idx}`}>
+                            <span className="stream-reasoning-step">Thought {idx + 1}</span>
+                            <p>{thought}</p>
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  ) : (
+                    <div className="stream-section stream-section-muted">
+                      <div className="stream-section-title">Model Reasoning</div>
+                      <p className="stream-reasoning-empty">
+                        No reasoning tokens were returned in this chunk.
+                      </p>
+                    </div>
+                  )}
+
+                  {entry.payload?.text && (
+                    <div className="stream-section">
+                      <div className="stream-section-title">Text Chunk</div>
+                      <pre className="stream-text-chunk">{entry.payload.text}</pre>
+                    </div>
+                  )}
+
+                  {nonTextParts.length > 0 && (
+                    <div className="stream-section">
+                      <div className="stream-section-title">Structured Parts</div>
+                      <ul className="stream-structured-list">
+                        {nonTextParts.map((part, idx) => {
+                          if (part?.functionCall) {
+                            return (
+                              <li key={`${entry.id}-call-${idx}`} className="stream-structured-row">
+                                <div className="stream-structured-label">Function Call</div>
+                                <div className="stream-structured-name">{part.functionCall.name}</div>
+                                <pre className="stream-structured-args">
+                                  {JSON.stringify(part.functionCall.args || {}, null, 2)}
+                                </pre>
+                              </li>
+                            );
+                          }
+
+                          if (part?.functionResponse) {
+                            return (
+                              <li key={`${entry.id}-response-${idx}`} className="stream-structured-row">
+                                <div className="stream-structured-label">Function Response</div>
+                                <div className="stream-structured-name">{part.functionResponse.name || 'response'}</div>
+                                <pre className="stream-structured-args">
+                                  {JSON.stringify(part.functionResponse.response ?? {}, null, 2)}
+                                </pre>
+                              </li>
+                            );
+                          }
+
+                          return (
+                            <li key={`${entry.id}-part-${idx}`} className="stream-structured-row">
+                              <pre className="stream-structured-args">
+                                {JSON.stringify(part, null, 2)}
+                              </pre>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  )}
+
+                  {entry.payload?.raw && (
+                    <div className="stream-section">
+                      <details className="stream-raw-details">
+                        <summary>Raw Chunk JSON</summary>
+                        <pre>{JSON.stringify(entry.payload.raw, null, 2)}</pre>
+                      </details>
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            return (
+              <div key={entry.id} className={`stream-entry stream-${normalizedType}`}>
+                <div className="stream-entry-meta">
+                  <span className="stream-entry-type">{entry.type}</span>
+                  <span className="stream-entry-timestamp">{timestampLabel}</span>
+                </div>
+                <pre>{JSON.stringify(entry.payload, null, 2) ?? ''}</pre>
               </div>
-              <pre>{JSON.stringify(entry.payload, null, 2)}</pre>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </aside>
