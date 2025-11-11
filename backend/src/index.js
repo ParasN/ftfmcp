@@ -15,6 +15,7 @@ dotenv.config({ path: join(__dirname, '../../.env') });
 
 const app = express();
 const port = process.env.PORT || 3001;
+const websocketPath = process.env.WEBSOCKET_PATH || '/ws';
 
 app.use(express.json());
 app.use(cors());
@@ -327,6 +328,7 @@ async function startServer() {
       console.log(`\n🚀 BigQuery Chat Server running on http://localhost:${port}`);
       console.log(`📊 Project ID: ${projectId}`);
       console.log(`🤖 Agentic orchestration: Enabled`);
+      console.log(`🔌 WebSocket endpoint: ${websocketPath}`);
       console.log(`\nAPI Endpoints:`);
       console.log(`  GET    /api/health                    - Health check`);
       console.log(`  GET    /api/conversations             - List conversations`);
@@ -340,7 +342,7 @@ async function startServer() {
       console.log(`  GET    /api/history                   - Model history snapshot\n`);
     });
 
-    const wss = new WebSocketServer({ server });
+    const wss = new WebSocketServer({ server, path: websocketPath });
 
     wss.on('connection', (ws) => {
       console.log('Client connected');

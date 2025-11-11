@@ -1,5 +1,7 @@
 node_modules/
 dist/
+frontend/dist/
+backend/public/
 build/
 .env
 .env.local

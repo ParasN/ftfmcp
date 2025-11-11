@@ -131,6 +131,16 @@ npm run start
 - Backend API on http://localhost:3001
 - Frontend UI on http://localhost:5173
 
+### Deploying to Firebase Hosting + Cloud Run
+
+If you want to share a hosted demo using Firebase Studio, the repository now ships with a `Dockerfile`, Firebase config files, and a deployment guide in `docs/firebase-deployment.md`. The flow is:
+
+1. Build the frontend and sync assets: `npm run build`.
+2. Build & deploy the Cloud Run service with the provided Dockerfile.
+3. Deploy the static frontend via `firebase deploy --only hosting`, which rewrites `/api/**` and `/ws` to the Cloud Run backend.
+
+See [docs/firebase-deployment.md](docs/firebase-deployment.md) for detailed instructions, environment variables, and the exact CLI commands.
+
 ### 7. Ingest WGSN Trend Reports (Optional but Recommended)
 
 The agent can blend qualitative insights from WGSN PDFs with quantitative BigQuery data. To ingest a report:

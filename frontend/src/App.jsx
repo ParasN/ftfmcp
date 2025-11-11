@@ -30,6 +30,7 @@ const COLOR_HEX_MAP = {
 };
 const FALLBACK_IMAGE =
   'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MDAiIGhlaWdodD0iMjQwIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZWNlOWZmIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGRvbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiM2NzUwYTQiIGZvbnQtc2l6ZT0iMjAiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiI+Tm8gVmlzdWFsPC90ZXh0Pjwvc3ZnPg==';
+const DEFAULT_DEV_WS_URL = 'ws://localhost:3001/ws';
 
 const createDebugEntry = (type, payload) => ({
   id: `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -37,6 +38,24 @@ const createDebugEntry = (type, payload) => ({
   payload,
   timestamp: new Date().toISOString()
 });
+
+const buildWebSocketUrl = () => {
+  const overrideUrl = import.meta.env.VITE_WS_URL;
+  if (overrideUrl) {
+    return overrideUrl;
+  }
+
+  if (typeof window === 'undefined') {
+    return DEFAULT_DEV_WS_URL;
+  }
+
+  if (import.meta.env.DEV) {
+    return DEFAULT_DEV_WS_URL;
+  }
+
+  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  return `${protocol}://${window.location.host}/ws`;
+};
 
 const extractModelReasoning = (message) => {
   const collected = [];
@@ -190,7 +209,8 @@ function App() {
   useEffect(() => {
     checkHealth();
 
-    const socket = new WebSocket('ws://localhost:3001');
+    const websocketUrl = buildWebSocketUrl();
+    const socket = new WebSocket(websocketUrl);
     ws.current = socket;
 
     socket.onopen = () => {

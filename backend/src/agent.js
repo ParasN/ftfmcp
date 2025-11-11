@@ -14,7 +14,7 @@ const __dirname = path.dirname(__filename);
 
 const MOODBOARD_TRIGGER_KEYWORD = 'MOODBOARD_RA';
 const RA_INPUT_PATH = path.resolve(__dirname, '../config/mock_ra_input.json');
-const MCP_SERVER_URL = 'http://localhost:3002';
+const DEFAULT_MCP_SERVER_URL = 'http://127.0.0.1:3002';
 const RATE_LIMIT_DELAY_MS = 60000;
 const WGSN_RELEVANT_QUERY_TYPES = new Set([
   'trend_discovery_exploration',
@@ -325,6 +325,10 @@ function cloneHistoryEntries(history) {
     return [];
   }
   return JSON.parse(JSON.stringify(history));
+}
+
+function getMcpServerUrl() {
+  return process.env.MCP_SERVER_URL || DEFAULT_MCP_SERVER_URL;
 }
 
 // Agent orchestrates Gemini conversations and MCP tool usage.
@@ -737,19 +741,19 @@ Always strive to return a final answer to the user, even if it takes several ste
   async executeToolCall(toolName, args = {}) {
     switch (toolName) {
       case 'get_available_tables': {
-        const response = await axios.get(`${MCP_SERVER_URL}/tables`);
+        const response = await axios.get(`${getMcpServerUrl()}/tables`);
         return response.data;
       }
       case 'get_schema_for_table': {
-        const response = await axios.get(`${MCP_SERVER_URL}/tables/${args.dataset}/${args.table}/schema`);
+        const response = await axios.get(`${getMcpServerUrl()}/tables/${args.dataset}/${args.table}/schema`);
         return response.data;
       }
       case 'run_query': {
-        const response = await axios.post(`${MCP_SERVER_URL}/query`, { query: args.sqlQuery });
+        const response = await axios.post(`${getMcpServerUrl()}/query`, { query: args.sqlQuery });
         return response.data;
       }
       case 'forecast': {
-        const response = await axios.post(`${MCP_SERVER_URL}/forecast`, args);
+        const response = await axios.post(`${getMcpServerUrl()}/forecast`, args);
         return response.data;
       }
       case 'list_wgsn_reports': {
