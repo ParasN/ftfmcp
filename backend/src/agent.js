@@ -6,6 +6,8 @@ import { buildResponseFormatHint, validateResponseAgainstTemplate, getResponseSc
 import { MoodboardGenerator } from './moodboardGenerator.js';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { listWgsnReportsMetadata, searchWgsnReports } from './wgsn/wgsnSearch.js';
+import { buildWgsnEvidencePackage } from './wgsn/wgsnSnippetService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,6 +16,36 @@ const MOODBOARD_TRIGGER_KEYWORD = 'MOODBOARD_RA';
 const RA_INPUT_PATH = path.resolve(__dirname, '../config/mock_ra_input.json');
 const MCP_SERVER_URL = 'http://localhost:3002';
 const RATE_LIMIT_DELAY_MS = 60000;
+const WGSN_RELEVANT_QUERY_TYPES = new Set([
+  'trend_discovery_exploration',
+  'attribute_product_deep_dive',
+  'lifecycle_momentum_analysis',
+  'brand_cohort_relevance',
+  'moodboard_generation'
+]);
+const WGSN_KEYWORDS = [
+  'trend',
+  'trends',
+  'attribute',
+  'attributes',
+  'style',
+  'styles',
+  'silhouette',
+  'silhouettes',
+  'color',
+  'colour',
+  'palette',
+  'forecast',
+  'macro trend',
+  'micro trend',
+  'wgsn',
+  'report',
+  'SS',
+  'AW',
+  '25',
+  '26',
+  'fashion'
+];
 
 const tools = [
   {
@@ -85,6 +117,40 @@ const tools = [
         }
       },
       required: ['datasetId', 'tableId', 'dateColumn', 'valueColumn']
+    }
+  },
+  {
+    name: 'list_wgsn_reports',
+    description: 'Lists ingested WGSN PDF reports with their tags and coverage metadata. Use this to understand what qualitative sources are available.',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: []
+    }
+  },
+  {
+    name: 'search_wgsn_reports',
+    description: 'Searches ingested WGSN PDF reports for relevant paragraphs. Use this alongside BigQuery tables whenever a query involves trends, attributes, or qualitative insights.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Natural language description of the trend, attribute, or question you need to research.'
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum snippets to return (default 5, max 10).'
+        },
+        tags: {
+          type: 'array',
+          description: 'Optional list of tags or categories to filter WGSN reports by.',
+          items: {
+            type: 'string'
+          }
+        }
+      },
+      required: ['query']
     }
   }
 ];
@@ -239,6 +305,19 @@ function buildNoResultGuidance(sqlQuery, routingSuggestion) {
   }
 
   return guidance;
+}
+
+function needsWgsnContext(userMessage, routingSuggestion) {
+  if (routingSuggestion?.queryType && WGSN_RELEVANT_QUERY_TYPES.has(routingSuggestion.queryType)) {
+    return true;
+  }
+
+  if (!userMessage) {
+    return false;
+  }
+
+  const normalized = userMessage.toLowerCase();
+  return WGSN_KEYWORDS.some(keyword => normalized.includes(keyword));
 }
 
 function cloneHistoryEntries(history) {
@@ -673,6 +752,43 @@ Always strive to return a final answer to the user, even if it takes several ste
         const response = await axios.post(`${MCP_SERVER_URL}/forecast`, args);
         return response.data;
       }
+      case 'list_wgsn_reports': {
+        const reports = await listWgsnReportsMetadata();
+        return {
+          totalReports: reports.length,
+          reports
+        };
+      }
+      case 'search_wgsn_reports': {
+        if (!args?.query || typeof args.query !== 'string') {
+          throw new Error('search_wgsn_reports requires a "query" string.');
+        }
+        const limit = Math.min(Math.max(args.limit ?? 5, 1), 10);
+        const results = await searchWgsnReports(args.query, {
+          limit,
+          tags: args.tags
+        });
+        return {
+          query: args.query,
+          limit,
+          totalResults: results.length,
+          results: results.map(result => ({
+            reportId: result.reportId,
+            reportTitle: result.reportTitle,
+            chunkId: result.chunkId,
+            startPage: result.startPage,
+            endPage: result.endPage,
+            score: Number(result.score.toFixed(3)),
+            text: result.text,
+            tags: result.tags,
+            topics: result.topics,
+            highlights: result.highlights,
+            summary: result.reportSummary,
+            ingestedAt: result.ingestedAt,
+            sourcePath: result.sourcePath
+          }))
+        };
+      }
       default:
         throw new Error(`Unknown tool: ${toolName}`);
     }
@@ -769,6 +885,21 @@ Always strive to return a final answer to the user, even if it takes several ste
 
     const routingHint = formatRoutingHint(routingSuggestion);
     const schemaHint = routingSuggestion.responseSchema ? buildResponseFormatHint(routingSuggestion.responseSchema) : '';
+    const wgsnHintNeeded = needsWgsnContext(userMessage, routingSuggestion);
+    let wgsnEvidence = null;
+
+    if (wgsnHintNeeded) {
+      try {
+        wgsnEvidence = await buildWgsnEvidencePackage(userMessage, {
+          searchLimit: 6,
+          maxReports: 2,
+          maxChunksPerReport: 2,
+          maxPagesPerReport: 4
+        });
+      } catch (error) {
+        console.warn('Failed to prepare WGSN evidence:', error.message);
+      }
+    }
 
     const hintBlocks = [];
 
@@ -780,7 +911,30 @@ Always strive to return a final answer to the user, even if it takes several ste
       hintBlocks.push(`[RESPONSE_FORMAT]\n${schemaHint}\n[/RESPONSE_FORMAT]\nReturn the JSON payload exactly once using this structure.`);
     }
 
+    if (wgsnHintNeeded) {
+      hintBlocks.push(
+        `[WGSN_CONTEXT]\n` +
+        `Trend, attribute, or lifecycle intent detected. In addition to querying BigQuery, ` +
+        `use the attached WGSN PDF excerpts (and, if needed, call 'search_wgsn_reports' or ` +
+        `'list_wgsn_reports') to pull supporting qualitative insights. Always cite the report ` +
+        `title and page range for every WGSN fact you surface.\n[/WGSN_CONTEXT]`
+      );
+    }
+
+    if (wgsnEvidence?.hintText) {
+      hintBlocks.push(`[WGSN_ATTACHMENTS]\n${wgsnEvidence.hintText}\n[/WGSN_ATTACHMENTS]`);
+    }
+
+    if (wgsnEvidence?.summaryBlock) {
+      hintBlocks.push(`[WGSN_SUMMARY]\n${wgsnEvidence.summaryBlock}\n[/WGSN_SUMMARY]`);
+    }
+
     const combinedMessage = [augmentedMessage, ...hintBlocks].join('\n\n');
+    const inlineParts = wgsnEvidence?.inlineParts || [];
+    const userPartsForSend = [
+      { text: combinedMessage },
+      ...inlineParts
+    ];
 
     this.conversationHistory.push({
       role: 'user',
@@ -801,17 +955,18 @@ Always strive to return a final answer to the user, even if it takes several ste
           parameters: tool.parameters
         }))
       }],
-      systemInstruction: `You are a helpful assistant that helps users explore and query their Google BigQuery data.
+      systemInstruction: `You are a helpful assistant that helps users explore and query their Google BigQuery data as well as the ingested WGSN PDF trend reports.
 
 When a user asks a question:
-1. First, understand what data they're asking about
+1. First, understand what data they're asking about.
 1. Next, use 'get_available_tables' to see what data is available.
 2. Next, use 'get_schema_for_table' on the most relevant table(s) to understand their structure.
 3. Then, smartly construct the accurate query that retrieves the required data to answer the user's question.
 4. Execute the query using the 'run_query' tool.
 5. If a query returns zero rows or incomplete coverage, iteratively adjust the SQL—loosen filters, try alternate attribute spellings, or switch to other recommended tables—before concluding no data exists.
-6. Cross reference, link, and process between multiple relevant tables to fetch and synthesize the required information
-7. Present results in a clear, conversational way
+6. Cross reference, link, and process between multiple relevant tables to fetch and synthesize the required information.
+7. Whenever the question touches trends, attributes, lifecycle, styling, or brand positioning, also call 'search_wgsn_reports' (and 'list_wgsn_reports' if you need metadata) to gather qualitative insights, then cite the report title and page range.
+8. Process all the information and present results in a clear, conversational way.
 
 Always explain what you're doing and why.
 
@@ -821,9 +976,10 @@ RESPONSE FORMAT RULES:
 3. Preserve all headings, table columns, emojis, and bullet formatting shown in the template.
 4. Populate tables with the most relevant data available; if data is missing, look up other tables where the data can be found from and link with that table. State "No data" only if you have exhausted all options.
 5. Provide hashtags for similar trends in the end. Bundle the similar trends into a collection and give that collection a name.
-5. After the main sections, include the concluding footnote specified in the template.
-6. Do not output JSON, code fences, or alternative layouts unless explicitly asked.
-7. If no [RESPONSE_FORMAT] hint is supplied, use the default \"📌 Data Insights Summary\" template from the shared guidelines.`
+6. Pair every trend/attribute/lifecycle insight with at least one WGSN citation (report title + page range) or explicitly state that no relevant WGSN snippet was found after searching.
+7. After the main sections, include the concluding footnote specified in the template.
+8. Do not output JSON, code fences, or alternative layouts unless explicitly asked.
+9. If no [RESPONSE_FORMAT] hint is supplied, use the default "📌 Data Insights Summary" template from the shared guidelines.`
     });
 
 
@@ -834,13 +990,14 @@ RESPONSE FORMAT RULES:
     const MAX_FORMAT_RETRIES = 1;
     let attempt = 0;
     let pendingMessage = combinedMessage;
+    let pendingParts = userPartsForSend;
     let finalText = '';
     let aggregatedToolCalls = [];
     let validationResult = { valid: true, missingSections: [] };
 
     while (attempt <= MAX_FORMAT_RETRIES) {
       const streamResult = await this.runWithRateLimitRetry(
-        () => chat.sendMessageStream(pendingMessage),
+        () => chat.sendMessageStream(pendingParts || [{ text: pendingMessage }]),
         'streaming Gemini response'
       );
       const iterator = streamResult?.stream ?? streamResult;
@@ -983,6 +1140,7 @@ RESPONSE FORMAT RULES:
       });
 
       pendingMessage = correctionPrompt;
+      pendingParts = [{ text: correctionPrompt }];
     }
 
     let attachments = [];

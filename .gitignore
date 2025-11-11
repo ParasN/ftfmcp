@@ -6,4 +6,6 @@ build/
 *.log
 .DS_Store
 backend/generated/
-backend/data/
+backend/data/*
+!backend/data/wgsnReports.json
+backend/data/wgsn_snippets/

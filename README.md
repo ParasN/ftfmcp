@@ -6,6 +6,7 @@ A full-stack agentic application that lets you chat with your Google BigQuery da
 
 - **Natural Language Interface**: Ask questions in plain English about your BigQuery data
 - **Agentic Orchestration**: The AI autonomously decides which BigQuery operations to perform
+- **WGSN Trend Intelligence**: Ingest WGSN PDF reports and let the agent merge qualitative snippets with quantitative BigQuery signals for every trend/attribute ask
 - **Multi-turn Conversations**: Maintains context across the conversation for natural interactions
 - **Real-time Tool Visibility**: See exactly which BigQuery operations the AI is running
 - **Modern UI**: Clean, responsive chat interface with typing indicators and tool call displays
@@ -129,6 +130,19 @@ npm run start
 
 - Backend API on http://localhost:3001
 - Frontend UI on http://localhost:5173
+
+### 7. Ingest WGSN Trend Reports (Optional but Recommended)
+
+The agent can blend qualitative insights from WGSN PDFs with quantitative BigQuery data. To ingest a report:
+
+1. Place the PDF on your machine (local paths are supported).
+2. Run the ingestion helper from the project root:
+   ```bash
+   npm run wgsn:ingest --workspace=backend -- --file /absolute/path/to/report.pdf --tags womenswear,denim --title "Denim Macro Trends FY24"
+   ```
+3. The script extracts and chunks the PDF into `backend/data/wgsnReports.json` (override via `WGSN_REPORT_STORE`). You can rerun it whenever a new report arrives; ingesting the same file updates the existing entry via checksum.
+
+Once at least one report is ingested, the `search_wgsn_reports` tool becomes available to the LLM, and every trend/attribute response will cite both the SQL tables and the WGSN snippets it used.
 
 #### Start Backend Only
 

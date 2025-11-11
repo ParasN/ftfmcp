@@ -1,56 +1,6 @@
 {
   "query_mappings": [
-    {
-      "query_type": "moodboard_generation",
-      "priority": 0,
-      "description": "Generate a brand-aligned moodboard from Range Architecture inputs and mock brand DNA/trend fixtures.",
-      "user_personas": [
-        "Fashion Designers",
-        "Vendors",
-        "Buyers"
-      ],
-      "business_question": "How do I translate an RA into a visual moodboard with rationale?",
-      "keywords": [
-        "moodboard",
-        "range architecture",
-        "ra-",
-        "brand dna",
-        "visual direction",
-        "generate moodboard",
-        "ra moodboard",
-        "moodboard_ra",
-        "brand alignment",
-        "trend tiles",
-        "visual brief"
-      ],
-      "tables": [
-        {
-          "dataset": "nextwave",
-          "table": "trend_scores",
-          "priority": 1,
-          "reason": "POC fixtures powering RA to trend translations"
-        },
-        {
-          "dataset": "nextwave",
-          "table": "edited_options_bestsellers_data",
-          "priority": 1,
-          "reason": "Bestsellers reflect current trends with LLM-mapped attributes and trend_id linkage"
-        },
-        {
-          "dataset": "nextwave",
-          "table": "bestseller_data_attributes",
-          "priority": 1,
-          "reason": "Captures trending attributes through bestselling product analysis"
-        },
-        {
-          "dataset": "nextwave",
-          "table": "stl_media",
-          "priority": 2,
-          "reason": "Primary trend visuals with imageUrl and gcs_image_urls fields for attribute-aligned imagery"
-        }
-     ]
-    },
-    {
+      {
       "query_type": "trend_discovery_exploration",
       "priority": 1,
       "description": "Discovery of new trend entities, filtering by category/brick, ordered by trend score or recency",
@@ -61,6 +11,8 @@
       "business_question": "What's new, what's emerging, what should I be paying attention to?",
       "keywords": [
         "trending",
+        "bestsellers",
+        "new trends",
         "trends",
         "styles",
         "silhouettes",
@@ -131,6 +83,58 @@
         }
       ]
     },
+    
+    {
+      "query_type": "moodboard_generation",
+      "priority": 0,
+      "description": "Generate a brand-aligned moodboard from Range Architecture inputs and mock brand DNA/trend fixtures.",
+      "user_personas": [
+        "Fashion Designers",
+        "Vendors",
+        "Buyers"
+      ],
+      "business_question": "How do I translate an RA into a visual moodboard with rationale?",
+      "keywords": [
+        "moodboard",
+        "range architecture",
+        "ra-",
+        "brand dna",
+        "visual direction",
+        "generate moodboard",
+        "ra moodboard",
+        "moodboard_ra",
+        "brand alignment",
+        "trend tiles",
+        "visual brief"
+      ],
+      "tables": [
+        {
+          "dataset": "nextwave",
+          "table": "trend_scores",
+          "priority": 1,
+          "reason": "POC fixtures powering RA to trend translations"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "edited_options_bestsellers_data",
+          "priority": 1,
+          "reason": "Bestsellers reflect current trends with LLM-mapped attributes and trend_id linkage"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "bestseller_data_attributes",
+          "priority": 1,
+          "reason": "Captures trending attributes through bestselling product analysis"
+        },
+        {
+          "dataset": "nextwave",
+          "table": "stl_media",
+          "priority": 2,
+          "reason": "Primary trend visuals with imageUrl and gcs_image_urls fields for attribute-aligned imagery"
+        }
+     ]
+    },
+
     {
       "query_type": "performance_sales_intelligence",
       "priority": 1,
